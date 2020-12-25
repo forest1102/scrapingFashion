@@ -1,0 +1,8 @@
+node_modules
+.DS_Store
+img
+lib
+src_arc
+data.xlsx
+token.json
+credentials.json
