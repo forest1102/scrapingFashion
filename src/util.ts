@@ -1,5 +1,4 @@
 import * as urlPath from 'url'
-import { brandNameConverter, colors } from './lists'
 import * as moment from 'moment'
 import * as _ from 'lodash'
 import { Row } from 'exceljs'
@@ -17,19 +16,6 @@ export const getLastWord = (str: string) => {
 export const getSurfaceText = (e: Cheerio) => {
   e.children().empty()
   return e.text()
-}
-
-export const makeBrandItr = () => {
-  const counterObj: { [key: string]: number } = {}
-
-  return (brand: string) => {
-    if (!(brand in brandNameConverter)) return brand
-    counterObj[brand] = counterObj[brand] || 0
-    const brand_pro = brandNameConverter[brand][counterObj[brand]]
-    counterObj[brand] =
-      (counterObj[brand] + 1) % brandNameConverter[brand].length
-    return brand_pro
-  }
 }
 
 export function* makeRingItr<T>(arr: T[]) {

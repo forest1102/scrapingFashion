@@ -15,7 +15,7 @@ import * as client from 'cheerio-httpcli'
 
 import { addBaseURL, filterByWords } from '../../util'
 import * as _ from 'lodash'
-import * as lists from '../../lists'
+
 import * as urlPath from 'url'
 import { Scraper } from '../../scraperType'
 

@@ -15,7 +15,7 @@ export const retryWithDelay = (
   excludedError: string[] = []
 ) =>
   pipe(
-    tap(null, err => console.log('err', err, 'retry...')),
+    tap({ error: err => console.log('err', err, 'retry...') }),
     retryWhen(errors =>
       errors.pipe(
         flatMap((err, i) => {

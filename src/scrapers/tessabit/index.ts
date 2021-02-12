@@ -19,7 +19,7 @@ import {
   filterByWords,
   sizeCompare
 } from '../../util'
-import * as lists from '../../lists'
+
 import { CheerioStaticEx } from 'cheerio-httpcli'
 import * as _ from 'lodash'
 import { Scraper } from '../../scraperType'
@@ -128,13 +128,13 @@ export default class extends Scraper {
       })
     ).pipe(
       map(elem => {
-        const category = findByWords(lists.categories, elem.productName)
+        const category = findByWords(this.lists.categories, elem.productName)
 
         return {
           ...elem,
           category: category ? `${gender} ${category}` : '',
           color: filterByWords(
-            lists.colorMap,
+            this.lists.colorMap,
             elem.description.toLowerCase()
           ).map(v => v.toUpperCase()),
           brand_sex: elem.brand + (gender === 'MEN' ? ' M' : ''),
@@ -146,7 +146,7 @@ export default class extends Scraper {
       }),
       map(({ size_chart, ...others }) => {
         size_chart +=
-          size_chart && findByWords(lists.shoes, others.productName)
+          size_chart && findByWords(this.lists.shoes, others.productName)
             ? ' SHOES'
             : ''
         size_chart += size_chart && gender ? ' ' + gender : ''

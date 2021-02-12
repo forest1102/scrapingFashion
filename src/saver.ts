@@ -1,16 +1,29 @@
 import * as fs from 'fs-extra'
 import readline from 'readline-promise'
-import { google, sheets_v4 } from 'googleapis'
+import { drive_v3, google, sheets_v4 } from 'googleapis'
 import * as path from 'path'
-import { OAuth2Client } from 'google-auth-library'
+import { OAuth2Client, JWT } from 'google-auth-library'
 import * as moment from 'moment'
 import * as _ from 'lodash'
-import { reduce } from 'lodash'
+import { Storage } from '@google-cloud/storage'
+import { v5 as uuidv5 } from 'uuid'
+import { from, MonoTypeOperatorFunction, EMPTY } from 'rxjs'
+import {
+  retry,
+  map,
+  tap,
+  delay,
+  filter,
+  catchError,
+  mergeMap
+} from 'rxjs/operators'
+import axios, { AxiosResponse } from 'axios'
+import { httpsAgent, userAgent } from './fetch'
+import { retryWithDelay } from '../src_arc/monti/src/operators'
+import * as Jimp from 'jimp'
+import { Workbook } from 'exceljs'
 
 // If modifying these scopes, delete token.json.
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-const CREDENTIAL_PATH = path.join(__dirname, '../data/credentials.json')
-const TOKEN_PATH = path.join(__dirname, '../data/token.json')
 
 type RawRow<T> =
   | { [P in keyof T]: (string | number | { formula: string })[] }
@@ -19,100 +32,119 @@ type RawData<T> =
   | { [P in keyof T]: (string | number | { formula: string })[][] }
   | {}
 
-export default class SpreadSheet<T extends { [key: string]: number }> {
-  private oAuth2Client: OAuth2Client = null
-  private spreadsheetId = ''
-  private title = ''
-  private data: RawData<T> = {}
-  private count = 0
-  private bufLen: number
-  private sheetIds: T
-  constructor(spreadsheetId: string, bufLen: number, sheetIds: T) {
-    this.spreadsheetId = spreadsheetId
-    this.title = moment().format('MMDDHHmm')
-    this.bufLen = bufLen
-    this.sheetIds = sheetIds
+class Auth {
+  private static auth = new Auth()
+  private constructor() {}
+  static get instance() {
+    return this.auth
   }
 
-  private fetchOAuth2Client = () =>
-    this.oAuth2Client
-      ? Promise.resolve(this.oAuth2Client)
-      : fs
-          .readFile(CREDENTIAL_PATH)
-          .then(content => {
-            const credentials = JSON.parse(content.toString())
-            const {
-              client_secret,
-              client_id,
-              redirect_uris
-            } = credentials.installed
-            this.oAuth2Client = new google.auth.OAuth2(
-              client_id,
-              client_secret,
-              redirect_uris[0]
-            ) as any
+  static readonly SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+  static readonly KEY_PATH = path.join(
+    __dirname,
+    '../data/service_account.json'
+  )
+  private static readonly CREDENTIAL_PATH = path.join(
+    __dirname,
+    '../data/credentials.json'
+  )
+  private static readonly TOKEN_PATH = path.join(
+    __dirname,
+    '../data/token.json'
+  )
 
-            // Check if we have previously stored a token.
-            return fs
-              .readFile(TOKEN_PATH)
-              .then(token =>
-                this.oAuth2Client.setCredentials(JSON.parse(token.toString()))
-              )
-              .catch(err => this.getNewToken())
-              .then(() => {
-                return this.oAuth2Client
-              })
+  private auth: OAuth2Client = null
+  fetchAuth = () =>
+    this.auth
+      ? Promise.resolve(this.auth)
+      : fs
+          .readJSON(Auth.KEY_PATH)
+          .then(key => {
+            const { client_email, private_key } = key
+            const oAuth2Client = new google.auth.JWT(
+              client_email,
+              null,
+              private_key,
+              Auth.SCOPES
+            )
+
+            return oAuth2Client
+              .authorize()
+              .then(() => (this.auth = oAuth2Client as any))
           })
           .catch(err => {
             return Promise.reject('Error loading client secret file:' + err)
           })
 
-  private getNewToken() {
-    const authUrl = this.oAuth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: SCOPES
-    })
-    console.log('Authorize this app by visiting this url:', authUrl)
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true
-    })
-
-    return (rl.questionAsync(
-      'Enter the code from that page here: '
-    ) as Promise<string>).then(code => {
-      rl.close()
-      return this.oAuth2Client
-        .getToken(code)
-        .then(({ tokens }) => {
-          this.oAuth2Client.setCredentials(tokens)
-          // Store the token to disk for later program executions
-          return fs.writeFile(TOKEN_PATH, JSON.stringify(tokens)).then(() => {
-            console.log('Token stored to', TOKEN_PATH)
-          })
-        })
-        .catch(err => 'Error while trying to retrieve access token' + err)
-    })
-  }
-
-  private sheets: sheets_v4.Sheets = null
-
-  private fetchSheets = () =>
+  private sheets: sheets_v4.Sheets
+  fetchSheets = () =>
     this.sheets
       ? Promise.resolve(this.sheets)
-      : this.fetchOAuth2Client().then(() => {
+      : this.fetchAuth().then(() => {
           this.sheets = google.sheets({
             version: 'v4',
-            auth: this.oAuth2Client as any
+            auth: this.auth as any
           })
           return this.sheets
         })
 
+  private drive: drive_v3.Drive = null
+  fetchDrive = () =>
+    this.drive
+      ? Promise.resolve(this.drive)
+      : Auth.instance.fetchAuth().then(
+          () =>
+            (this.drive = google.drive({
+              version: 'v3',
+              auth: this.auth as any
+            }))
+        )
+}
+
+export class Drive {
+  private folderId = ''
+  constructor(folderId: string) {
+    this.folderId = folderId
+  }
+  async getFileId(filename: string, folderId?: string) {
+    const drive = await Auth.instance.fetchDrive()
+    const { data } = await drive.files.list({
+      q: `'${
+        folderId || this.folderId
+      }' in parents and trashed = false and name = '${filename}'`,
+      fields: 'files/id'
+    })
+    if (!data || !data.files || data.files.length === 0)
+      throw Error(filename + ' not found')
+    return data.files[0].id
+  }
+}
+
+export default class SpreadSheet<T extends { [key: string]: string }> {
+  private spreadsheetId = ''
+  private title = ''
+  private data: RawData<T> = {}
+  private count = 0
+  private bufLen: number
+  private sheetNames: T
+  private auth = Auth.instance
+  private sheetIds: { [x in keyof T]?: number } = {}
+  constructor(spreadsheetId: string, bufLen: number, sheetNames: T) {
+    this.spreadsheetId = spreadsheetId
+    this.title = moment().format('MMDDHHmm')
+    this.bufLen = bufLen
+    this.sheetNames = sheetNames
+  }
+
+  async init() {
+    await this.getSheetIdByNames()
+    await this.clearAllCells()
+  }
+
   addSheet() {
-    return this.fetchSheets().then(res => {
+    return this.auth.fetchSheets().then(sheets => {
       return this.spreadsheetId
-        ? this.sheets.spreadsheets.batchUpdate({
+        ? sheets.spreadsheets.batchUpdate({
             spreadsheetId: this.spreadsheetId,
             requestBody: {
               requests: [
@@ -136,9 +168,9 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
 
     if (requests.length === 0) return Promise.resolve(null)
 
-    return this.fetchSheets().then(res => {
+    return this.auth.fetchSheets().then(sheets => {
       return this.spreadsheetId
-        ? this.sheets.spreadsheets.batchUpdate({
+        ? sheets.spreadsheets.batchUpdate({
             spreadsheetId: this.spreadsheetId,
             requestBody: {
               requests
@@ -149,8 +181,8 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
   }
 
   private clearAllCells() {
-    return this.fetchSheets().then(() =>
-      this.sheets.spreadsheets.batchUpdate({
+    return Auth.instance.fetchSheets().then(sheets =>
+      sheets.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
         requestBody: {
           requests: _.reduce(
@@ -171,6 +203,53 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
         }
       })
     )
+  }
+  private async getSheetIdByNames() {
+    const sheets = await this.auth.fetchSheets()
+    const sheetProps = await sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: 'sheets.properties.sheetId,sheets.properties.title'
+    })
+    const ids = _.reduce(
+      sheetProps.data.sheets,
+      (acc, cur) => ({
+        ...acc,
+        [cur.properties.title]: cur.properties.sheetId
+      }),
+      {} as { [key: string]: number }
+    )
+    console.log(ids)
+
+    for (const key of Object.keys(this.sheetNames)) {
+      if (this.sheetNames[key] in ids) {
+        this.sheetIds[key as keyof T] = ids[this.sheetNames[key]]
+      } else {
+        const {
+          data: { replies }
+        } = await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: this.spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                addSheet: {
+                  properties: {
+                    title: this.sheetNames[key],
+                    gridProperties: {
+                      columnCount: 104
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        })
+
+        this.sheetIds[key as keyof T] = replies[0].addSheet.properties.sheetId
+      }
+    }
+    console.log(this.sheetIds)
+
+    return this.sheetIds
   }
 
   toRequest(raw: RawData<T>) {
@@ -211,7 +290,7 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
           range: {
             sheetId: this.sheetIds[key],
             dimension: 'ROWS',
-            startIndex: this.count,
+            startIndex: this.count - 1,
             endIndex: this.count + raw[key].length
           },
           fields: '*'
@@ -229,7 +308,7 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
         : this.data
 
     if (this.count === 0) {
-      await this.clearAllCells()
+      await this.init()
     }
 
     ++this.count
@@ -240,6 +319,10 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
     return Promise.resolve()
   }
 
+  async saveImage(path: string) {
+    const drive = await this.auth.fetchDrive()
+  }
+
   end() {
     return this.appendSheet(this.data).then(() => {
       this.data = {}
@@ -247,19 +330,73 @@ export default class SpreadSheet<T extends { [key: string]: number }> {
     })
   }
 }
-// const spreadsheetId = '10UvwDeVcbYCrTrh-N_dXgpa0iiIJLdPVVLShkiuvl4o'
-// const sheetIds = {
-//   data: 0
-// }
 
-// const spreadsheet = new SpreadSheet(spreadsheetId, 10, sheetIds)
-// console.dir(
-//   spreadsheet.toRequest({
-//     data: [
-//       [1, 2, 3],
-//       [5, 6, '1'],
-//       [{ formula: 'A1' }, 5, 6]
-//     ]
-//   }),
-//   { depth: null }
-// )
+export async function newSpreadSheet(
+  title: string,
+  bufLen: number,
+  sheetNames: string[]
+) {
+  const sheets = await Auth.instance.fetchSheets()
+  const {
+    data: { spreadsheetId }
+  } = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: {
+        title
+      }
+    },
+    fields: 'spreadsheetId'
+  })
+}
+
+export class CloudStorage {
+  private storage = new Storage({
+    keyFilename: path.join(__dirname, '../data/service_account.json')
+  })
+  private bucket = this.storage.bucket('scraping-datafiles')
+  constructor(private pathname: string) {}
+
+  readFile = (name: string) =>
+    this.bucket.file(path.join(this.pathname, name)).download()
+  writeFile = (name: string, data: string | Buffer) =>
+    this.bucket
+      .file(path.join(this.pathname, name))
+      .save(data)
+      .then(() => path.join(this.pathname, name))
+
+  saveExcel = (wb: Workbook) =>
+    wb.xlsx.writeBuffer().then(buf => this.writeFile('data.xlsx', buf as any))
+
+  uploadImg(folder: string, url: string, isURL = true) {
+    const uuid = uuidv5(url, isURL ? uuidv5.URL : uuidv5.DNS)
+    if (!url) return EMPTY
+
+    return from(
+      axios.get(url, {
+        responseType: 'arraybuffer',
+        httpsAgent,
+        headers: { 'user-agent': userAgent }
+      })
+    ).pipe(
+      tap(res => {
+        console.log(url)
+      }),
+      retryWithDelay(2000, 3) as MonoTypeOperatorFunction<AxiosResponse<any>>,
+      filter(res => !!res.data),
+      map(res => Buffer.from(res.data)),
+      mergeMap(buf => Jimp.read(buf).catch(() => null)),
+      filter((image: Jimp) => image !== undefined),
+      map(image => image.autocrop()),
+      mergeMap(image =>
+        from(image.getBufferAsync(`image/${image.getExtension()}`)).pipe(
+          mergeMap(buf =>
+            this.writeFile(
+              path.join(folder, uuid + '.' + image.getExtension()),
+              buf
+            )
+          )
+        )
+      )
+    )
+  }
+}

@@ -1,37 +1,16 @@
 import * as client from 'cheerio-httpcli'
-import {
-  Observable,
-  Observer,
-  from,
-  MonoTypeOperatorFunction,
-  empty,
-  EMPTY,
-  pipe
-} from 'rxjs'
-import {
-  retry,
-  map,
-  tap,
-  delay,
-  filter,
-  catchError,
-  mergeMap
-} from 'rxjs/operators'
+import { EMPTY, from, MonoTypeOperatorFunction, pipe } from 'rxjs'
+import { map, tap, delay, mergeMap } from 'rxjs/operators'
 import * as encode from './encoding'
 import * as tough from 'tough-cookie'
 import AxiosCookiejarSupport from 'axios-cookiejar-support'
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
-// import * as uuidv5 from 'uuid/v5'
-import { v5 as uuidv5 } from 'uuid'
-import * as fs from 'fs-extra'
 import * as path from 'path'
 import { retryWithDelay } from './operators'
 import * as https from 'https'
-import * as Jimp from 'jimp'
 import * as _ from 'lodash'
 import * as URLSearchParams from 'url-search-params'
 import * as cheerio from 'cheerio'
-const imgFile = path.join(__dirname, '../data/img')
 
 export const httpsAgent = new https.Agent({
   keepAlive: false
@@ -49,7 +28,7 @@ export function RxFetch(
   encoding: 'utf8' | 'sjis' = 'utf8',
   retryWhenError = true
 ) {
-  if (!url) return empty()
+  if (!url) return EMPTY
   return from(
     // tslint:disable-next-line: no-unnecessary-type-assertion
     new Promise((resolve, reject) => {
@@ -76,40 +55,6 @@ export function RxFetch(
           ) as MonoTypeOperatorFunction<client.CheerioStaticEx>
         )
       : pipe()
-  )
-}
-export function uploadImg(url: string, isURL = true) {
-  const uuid = uuidv5(url, isURL ? uuidv5.URL : uuidv5.DNS)
-  if (!url) return EMPTY
-
-  return from(
-    axios.get(url, {
-      responseType: 'arraybuffer',
-      httpsAgent,
-      headers: { 'user-agent': userAgent }
-    })
-  ).pipe(
-    tap(res => {
-      console.log(url)
-    }),
-    retryWithDelay(2000, 3) as MonoTypeOperatorFunction<AxiosResponse<any>>,
-    filter(res => !!res.data),
-    map(res => Buffer.from(res.data)),
-    mergeMap(buf => Jimp.read(buf).catch(() => null)),
-    filter(image => !!image),
-    map(image => image.autocrop()),
-    mergeMap(image =>
-      from(image.getBufferAsync(`image/${image.getExtension()}`)).pipe(
-        mergeMap(buf =>
-          fs.outputFile(
-            path.join(imgFile, uuid + '.' + image.getExtension()),
-            buf,
-            'binary'
-          )
-        ),
-        map(() => uuid + '.' + image.getExtension())
-      )
-    )
   )
 }
 

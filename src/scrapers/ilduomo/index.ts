@@ -14,8 +14,8 @@ import * as _ from 'lodash'
 
 import * as client from 'cheerio-httpcli'
 
-import * as lists from '../../lists'
 import { Scraper } from '../../scraperType'
+import List from '../../lists'
 import {
   findByWords,
   filterByWords,
@@ -34,8 +34,8 @@ export const sheetIds = {
 }
 export default class extends Scraper {
   NEXT_SELECTOR = '.next'
-  constructor(argv: any[]) {
-    super(argv)
+  constructor(argv: any[], list: List) {
+    super(argv, list)
 
     client.set('headers', { Cookie: this.Cookie.jp })
   }

@@ -3,7 +3,7 @@ import { from, of } from 'rxjs'
 import { map, filter, tap, mapTo, concatMap } from 'rxjs/operators'
 import * as client from 'cheerio-httpcli'
 import { findByWords, filterByWords, updateCookie } from '../../util'
-import * as lists from '../../lists'
+
 import * as _ from 'lodash'
 import { getAuthCredential, RxFetch } from '../../fetch'
 import * as tough from 'tough-cookie'
@@ -136,7 +136,7 @@ export default class extends Scraper {
       })),
       map(obj => {
         const category = _.defaultTo(
-          findByWords(lists.categories, obj.productName),
+          findByWords(this.lists.categories, obj.productName),
           ''
         ).toUpperCase()
         return {
@@ -162,7 +162,7 @@ export default class extends Scraper {
             ...others,
             size: size.map(s => s.replace(/ \w+/, '')),
             size_chart: `${matches[2]} ${
-              others.category && findByWords(lists.shoes, others.category)
+              others.category && findByWords(this.lists.shoes, others.category)
                 ? 'SHOES '
                 : ''
             }${others.gender}`
@@ -172,7 +172,8 @@ export default class extends Scraper {
       map(({ description, ...others }) => ({
         ...others,
         description,
-        color: filterByWords(lists.colorMap, description.toUpperCase()) || [],
+        color:
+          filterByWords(this.lists.colorMap, description.toUpperCase()) || [],
         country: _.get(description.match(/Made in: (\w+)/), '1', ''),
         size_info: (() => {
           const fit = (description.match(/(?<=size&fit: ).*?(?=$)/i) || [])[0]

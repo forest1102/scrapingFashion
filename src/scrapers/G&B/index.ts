@@ -21,7 +21,6 @@ import {
 } from 'rxjs/operators'
 import * as client from 'cheerio-httpcli'
 
-import * as lists from '../../lists'
 import {
   commaToDot,
   addBaseURL,
@@ -183,7 +182,7 @@ export default class extends Scraper {
         color: [
           'h1.page-title  p.title',
           e =>
-            lists.colors.filter(
+            this.lists.colors.filter(
               c => e.first().text().toLowerCase().indexOf(c) !== -1
             )
         ],
@@ -212,11 +211,11 @@ export default class extends Scraper {
         if (obj.size[0] === 'TU') return { ...obj, size_chart: '指定なし' }
         if (/[xsml]/i.test(obj.size[0]))
           return { ...obj, size_chart: 'STANDARD ' + obj.gender }
-        if (obj.brand_sex in lists.AHsize) {
+        if (obj.brand_sex in this.lists.AHsize) {
           let size_chart = ''
-          size_chart = findByWords(lists.shoes, obj.productName)
-            ? lists.AHsize[obj.brand_sex]['shoes'] + ' SHOES'
-            : lists.AHsize[obj.brand_sex]['not shoes']
+          size_chart = findByWords(this.lists.shoes, obj.productName)
+            ? this.lists.AHsize[obj.brand_sex]['shoes'] + ' SHOES'
+            : this.lists.AHsize[obj.brand_sex]['not shoes']
           size_chart += size_chart ? ` ${obj.gender}` : ''
           return { ...obj, size_chart }
         }
@@ -227,7 +226,7 @@ export default class extends Scraper {
         }
       }),
       map(obj => {
-        const category = findByWords(lists.categories, obj.productName)
+        const category = findByWords(this.lists.categories, obj.productName)
 
         return { ...obj, category: category ? `${gender} ${category}` : '' }
       }),

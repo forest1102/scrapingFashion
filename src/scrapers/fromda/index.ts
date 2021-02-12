@@ -14,8 +14,8 @@ import * as _ from 'lodash'
 
 import * as client from 'cheerio-httpcli'
 
-import * as lists from '../../lists'
 import { Scraper } from '../../scraperType'
+import List from '../../lists'
 import {
   findByWords,
   filterByWords,
@@ -32,8 +32,8 @@ export default class extends Scraper {
   BASE_URL = 'https://www.tizianafausti.com/en/'
   NEXT_SELECTOR = '.next'
 
-  constructor(argv: any[]) {
-    super(argv)
+  constructor(argv: any[], lists: List) {
+    super(argv, lists)
     client.set('headers', { Cookie: this.Cookie.jp })
   }
 
@@ -210,7 +210,7 @@ export default class extends Scraper {
       map(obj => ({
         ...obj,
         size: _.get(obj.size, [obj.size_chart], ['OS']),
-        color: obj.color.filter(c => lists.colorMap[c]),
+        color: obj.color.filter(c => this.lists.colorMap[c]),
         gender: _.includes(obj.description, 'Gender: woman') ? 'WOMEN' : 'MEN'
       })),
       map(obj => ({
@@ -306,7 +306,7 @@ export default class extends Scraper {
 
         size_chart = size_chart
           ? size_chart +
-            (findByWords(lists.shoes, obj.productName) ? ' SHOES' : '') +
+            (findByWords(this.lists.shoes, obj.productName) ? ' SHOES' : '') +
             (' ' + obj.gender)
           : '指定なし'
         return {
@@ -319,7 +319,7 @@ export default class extends Scraper {
       map(obj => ({
         ...obj,
         category: _.thru(
-          findByWords(lists.categories, obj.productName),
+          findByWords(this.lists.categories, obj.productName),
           category => (category ? `${obj.gender} ${category}` : '')
         ),
         category_tree: obj.category_tree.join('-')

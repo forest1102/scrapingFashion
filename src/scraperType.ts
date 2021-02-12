@@ -1,8 +1,9 @@
 import { Observable } from 'rxjs'
 import { CheerioStaticEx } from 'cheerio-httpcli'
+import List from './lists'
 export abstract class Scraper {
   protected isItaly: boolean
-  constructor(protected argv: any[]) {
+  constructor(protected argv: any[], protected lists: List) {
     this.isItaly = argv[3] && argv[3] === 'italy'
   }
   abstract beforeFetchPages: (url: string) => Observable<any>

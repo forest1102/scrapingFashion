@@ -1,7 +1,7 @@
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
 import { RxFetch, uploadImg, getAuthCredential } from '../../fetch'
-import * as lists from '../../lists'
+
 import {
   map,
   tap,
@@ -206,7 +206,7 @@ export default class extends Scraper {
         image: _.includes(obj.category_tree, 'Clothing')
           ? swapElement(obj.image, 0, 1)
           : obj.image,
-        size_chart: _.chain(lists.AHsize)
+        size_chart: _.chain(this.lists.AHsize)
           .get([
             obj.brand_sex.toUpperCase(),
             _.includes(obj.category_tree, 'Shoes') ? 'shoes' : 'not shoes'
@@ -226,7 +226,7 @@ export default class extends Scraper {
       map(({ description, ...others }) => ({
         ...others,
         category: _.thru(
-          findByWords(lists.categories, others.productName),
+          findByWords(this.lists.categories, others.productName),
           category => (category ? `${others.gender} ${category}` : '')
         ),
         description,

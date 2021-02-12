@@ -14,7 +14,6 @@ import * as _ from 'lodash'
 
 import * as client from 'cheerio-httpcli'
 
-import * as lists from '../../lists'
 import {
   findByWords,
   filterByWords,
@@ -22,13 +21,14 @@ import {
   sizeCompare
 } from '../../util'
 import { Scraper } from '../../scraperType'
+import List from '../../lists'
 export default class Tiziana extends Scraper {
   BASE_URL = 'https://www.tizianafausti.com/en/'
   NEXT_SELECTOR = '.pages-item-next a'
   sessID: string
 
-  constructor(argv: any) {
-    super(argv)
+  constructor(argv: any, lists: List) {
+    super(argv, lists)
     this.sessID = _.last(argv)
     this.sessID = this.sessID === 'italy' ? '' : this.sessID
   }
@@ -254,7 +254,7 @@ export default class Tiziana extends Scraper {
             size_infos.push(tmp[0])
 
           size_chart =
-            _.get(lists.AHsize, [
+            _.get(this.lists.AHsize, [
               obj.brand_sex.toUpperCase(),
               _.includes(obj.category_tree, 'Shoes') ? 'shoes' : 'not shoes'
             ]) || size_chart
@@ -283,7 +283,7 @@ export default class Tiziana extends Scraper {
       map(obj => ({
         ...obj,
         category: _.thru(
-          findByWords(lists.categories, obj.productName),
+          findByWords(this.lists.categories, obj.productName),
           category => (category ? `${obj.gender} ${category}` : '')
         ),
         description: obj.description.li,
