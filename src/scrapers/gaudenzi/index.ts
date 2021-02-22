@@ -1,6 +1,5 @@
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
-import { RxFetch, uploadImg } from '../../fetch'
 import {
   map,
   tap,
@@ -16,7 +15,6 @@ import * as client from 'cheerio-httpcli'
 import { addBaseURL, filterByWords } from '../../util'
 import * as _ from 'lodash'
 
-import * as urlPath from 'url'
 import { Scraper } from '../../scraperType'
 
 client.set('headers', {
@@ -127,7 +125,7 @@ export default class extends Scraper {
         sku: (description.match(/(?<=Product code: ).*(?=\s?<br>)/i) || [''])[0]
           .trim()
           .toUpperCase(),
-        color: filterByWords(lists.colorMap, description),
+        color: filterByWords(this.lists.colorMap, description),
         category: gender + ' ' + category,
         size_info: (() => {
           const heelHeight = description.match(/(?<=heel: )[0-9,.cminh ]+/i)

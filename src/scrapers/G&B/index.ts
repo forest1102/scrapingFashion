@@ -2,7 +2,6 @@ import { getElementObj, getAllPagesRx, getAllPages } from '../../observable'
 import { from, of } from 'rxjs'
 import {
   RxFetch,
-  uploadImg,
   fetchAndSaveCookies,
   userAgent,
   httpsAgent

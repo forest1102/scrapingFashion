@@ -24,19 +24,10 @@ import {
   execAllGen
 } from '../../util'
 
-export const BASE_URL = 'https://www.tizianafausti.com/en/'
-export const NEXT_SELECTOR = '.next'
-export const spreadsheetId = '10UvwDeVcbYCrTrh-N_dXgpa0iiIJLdPVVLShkiuvl4o'
-export const sheetIds = {
-  processed_data: 2120777092,
-  data: 0,
-  output_data: 772186310
-}
 export default class extends Scraper {
   NEXT_SELECTOR = '.next'
-  constructor(argv: any[], list: List) {
-    super(argv, list)
-
+  constructor(isItaly: boolean, lists: List, argv: any[]) {
+    super(isItaly, lists, argv)
     client.set('headers', { Cookie: this.Cookie.jp })
   }
   beforeFetchPages = (url: string) => of(url)
@@ -151,7 +142,7 @@ export default class extends Scraper {
     ).pipe(
       map(obj => ({
         ...obj,
-        // color: obj.color.filter(c => lists.colorMap[c]),
+        // color: obj.color.filter(c => this.lists.colorMap[c]),
         euro_price: null,
         old_price: obj.old_price || obj.price,
         description: obj.description + '\r\n' + obj.features,
@@ -203,7 +194,7 @@ export default class extends Scraper {
           color =
             tmp[1] &&
             _.flatMap(tmp[1].split('/'), str =>
-              filterByWords(lists.colorMap, str)
+              filterByWords(this.lists.colorMap, str)
             )
 
         // if (obj.fit) {
@@ -225,7 +216,7 @@ export default class extends Scraper {
         //     size_infos.push(tmp[0])
 
         //   // size_chart =
-        //   //   _.get(lists.AHsize, [
+        //   //   _.get(this.lists.AHsize, [
         //   //     obj.brand_sex.toUpperCase(),
         //   //     _.includes(obj.category_tree, 'Shoes') ? 'shoes' : 'not shoes'
         //   //   ]) || size_chart
@@ -237,7 +228,7 @@ export default class extends Scraper {
         //   size_chart =
         //     size_chart &&
         //     size_chart +
-        //       (findByWords(lists.shoes, obj.productName) ? ' SHOES' : '') +
+        //       (findByWords(this.lists.shoes, obj.productName) ? ' SHOES' : '') +
         //       (' ' + obj.gender)
 
         //   size_chart = !size_chart && obj.size[0] === 'UNI' ? 'UNI' : size_chart
@@ -257,7 +248,7 @@ export default class extends Scraper {
       }),
       map(obj => ({
         ...obj,
-        size_chart: _.chain(lists.AHsize)
+        size_chart: _.chain(this.lists.AHsize)
           .get([obj.brand_sex.toUpperCase()])
           .thru(
             v =>
@@ -270,7 +261,7 @@ export default class extends Scraper {
           .defaultTo('')
           .value(),
         category: _.thru(
-          findByWords(lists.categories, obj.productName),
+          findByWords(this.lists.categories, obj.productName),
           category => (category ? `${obj.gender} ${category}` : '')
         ),
         category_tree: obj.category_tree.join('_')

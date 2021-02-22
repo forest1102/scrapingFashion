@@ -77,6 +77,19 @@ export default class List {
   shoes: string[]
   AHsize: { [key: string]: { 'shoes': string; 'not shoes': string } }
   urls: string[]
+  constants: {
+    '発送手段': string
+    '購入期限': string
+    '買付地': string
+    '発送地': string
+    '出品': string
+    'テーマ': string
+    '数量': string
+    '管理番号': string
+    '※購入者の支払方法': string
+    '買付先ショップ名': string
+    '関税': '関税元払い'
+  }
 
   async loadFiles() {
     this.categoryConverter = _.reduce(
@@ -271,8 +284,12 @@ export default class List {
     this.urls = JSON.parse(
       (await this.storage.readFile('urls.json'))[0].toString()
     )
+
+    this.constants = JSON.parse(
+      (await this.storage.readFile('constants.json'))[0].toString()
+    )
   }
-  toArrIndex: { [key: number]: string } = {
+  static readonly toArrIndex = Object.freeze({
     0: 'URL',
     1: 'category',
     2: 'category_tree',
@@ -315,10 +332,10 @@ export default class List {
     91: 'img9',
     93: 'productName',
     94: 'productName'
-  }
+  })
 
-  toProcessedIndex: { [key: number]: string } = {
-    ...this.toArrIndex,
+  static readonly toProcessedIndex: { [key: number]: string } = Object.freeze({
+    ...List.toArrIndex,
     1: 'big_category',
     2: 'small_category',
     3: 'brand_pro',
@@ -356,12 +373,12 @@ export default class List {
     98: 'season 2',
     99: 'mark',
     101: 'word_count'
-  }
-  toOutputIndex = {
-    ...this.toProcessedIndex,
+  })
+  static readonly toOutputIndex = Object.freeze({
+    ...List.toProcessedIndex,
     0: 'gender',
     4: 'title_pro_val',
     13: 'comment_val',
     101: 'word_count_val'
-  }
+  })
 }

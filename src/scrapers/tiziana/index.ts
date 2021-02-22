@@ -27,8 +27,8 @@ export default class Tiziana extends Scraper {
   NEXT_SELECTOR = '.pages-item-next a'
   sessID: string
 
-  constructor(argv: any, lists: List) {
-    super(argv, lists)
+  constructor(isItaly: boolean, lists: List, argv: any[]) {
+    super(isItaly, lists, argv)
     this.sessID = _.last(argv)
     this.sessID = this.sessID === 'italy' ? '' : this.sessID
   }

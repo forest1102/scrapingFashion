@@ -5,7 +5,6 @@ import * as encode from './encoding'
 import * as tough from 'tough-cookie'
 import AxiosCookiejarSupport from 'axios-cookiejar-support'
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
-import * as path from 'path'
 import { retryWithDelay } from './operators'
 import * as https from 'https'
 import * as _ from 'lodash'
@@ -17,7 +16,7 @@ export const httpsAgent = new https.Agent({
 })
 export const userAgent =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'
-
+client.set('headers', { 'Accept-Language': 'ja,en-US' })
 client.set('headers', {
   'Connection': 'Keep-Alive',
   'Keep-Alive': 'timeout=600;max=100'

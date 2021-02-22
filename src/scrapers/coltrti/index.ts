@@ -1,6 +1,6 @@
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
-import { RxFetch, uploadImg, getAuthCredential } from '../../fetch'
+import { RxFetch, getAuthCredential } from '../../fetch'
 
 import {
   map,

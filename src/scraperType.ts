@@ -1,13 +1,15 @@
-import { Observable } from 'rxjs'
+import { Observable, of } from 'rxjs'
 import { CheerioStaticEx } from 'cheerio-httpcli'
 import List from './lists'
+import { getAllPagesRx } from '../src_arc/fromda/src/observable'
 export abstract class Scraper {
-  protected isItaly: boolean
-  constructor(protected argv: any[], protected lists: List) {
-    this.isItaly = argv[3] && argv[3] === 'italy'
-  }
-  abstract beforeFetchPages: (url: string) => Observable<any>
-  abstract NEXT_SELECTOR: string
+  constructor(
+    protected isItaly: boolean,
+    protected lists: List,
+    protected argv: string[]
+  ) {}
+  beforeFetchPages = (url: string) => of(url) as Observable<any>
+  NEXT_SELECTOR?: string
   abstract toItemPageUrlObservable: (
     $: CheerioStaticEx,
     url: string
@@ -43,4 +45,6 @@ export abstract class Scraper {
     size_info: string
     euro_price?: string | number
   }>
+
+  getAllPages = (url: string) => getAllPagesRx(url, this.NEXT_SELECTOR)
 }

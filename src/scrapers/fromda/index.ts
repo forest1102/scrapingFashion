@@ -32,8 +32,8 @@ export default class extends Scraper {
   BASE_URL = 'https://www.tizianafausti.com/en/'
   NEXT_SELECTOR = '.next'
 
-  constructor(argv: any[], lists: List) {
-    super(argv, lists)
+  constructor(isItaly: boolean, lists: List, argv: any[]) {
+    super(isItaly, lists, argv)
     client.set('headers', { Cookie: this.Cookie.jp })
   }
 

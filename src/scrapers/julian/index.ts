@@ -6,7 +6,6 @@ import { findByWords, filterByWords, updateCookie } from '../../util'
 
 import * as _ from 'lodash'
 import { getAuthCredential, RxFetch } from '../../fetch'
-import * as tough from 'tough-cookie'
 import { Scraper } from '../../scraperType'
 
 client.set('headers', {

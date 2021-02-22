@@ -1,9 +1,4 @@
-import * as fs from 'fs-extra'
-import readline from 'readline-promise'
-import { drive_v3, google, sheets_v4 } from 'googleapis'
 import * as path from 'path'
-import { OAuth2Client, JWT } from 'google-auth-library'
-import * as moment from 'moment'
 import * as _ from 'lodash'
 import { Storage } from '@google-cloud/storage'
 import { v5 as uuidv5 } from 'uuid'
@@ -20,11 +15,14 @@ import {
 import axios, { AxiosResponse } from 'axios'
 import { httpsAgent, userAgent } from './fetch'
 import { retryWithDelay } from '../src_arc/monti/src/operators'
-import * as Jimp from 'jimp'
-import { Workbook } from 'exceljs'
-
-// If modifying these scopes, delete token.json.
-
+import Jimp = require('jimp/dist')
+import * as xlsx from 'xlsx-populate'
+import { drive_v3, google, sheets_v4 } from 'googleapis'
+import { OAuth2Client, JWT } from 'google-auth-library'
+import * as moment from 'moment'
+import * as fs from 'fs-extra'
+import * as archiver from 'archiver'
+import * as stream from 'stream'
 type RawRow<T> =
   | { [P in keyof T]: (string | number | { formula: string })[] }
   | {}
@@ -43,14 +41,6 @@ class Auth {
   static readonly KEY_PATH = path.join(
     __dirname,
     '../data/service_account.json'
-  )
-  private static readonly CREDENTIAL_PATH = path.join(
-    __dirname,
-    '../data/credentials.json'
-  )
-  private static readonly TOKEN_PATH = path.join(
-    __dirname,
-    '../data/token.json'
   )
 
   private auth: OAuth2Client = null
@@ -101,252 +91,95 @@ class Auth {
         )
 }
 
-export class Drive {
-  private folderId = ''
-  constructor(folderId: string) {
-    this.folderId = folderId
-  }
-  async getFileId(filename: string, folderId?: string) {
-    const drive = await Auth.instance.fetchDrive()
-    const { data } = await drive.files.list({
-      q: `'${
-        folderId || this.folderId
-      }' in parents and trashed = false and name = '${filename}'`,
-      fields: 'files/id'
-    })
-    if (!data || !data.files || data.files.length === 0)
-      throw Error(filename + ' not found')
-    return data.files[0].id
-  }
-}
+export class SpreadSheet {
+  constructor(private spreadsheetId: string) {}
 
-export default class SpreadSheet<T extends { [key: string]: string }> {
-  private spreadsheetId = ''
-  private title = ''
-  private data: RawData<T> = {}
-  private count = 0
-  private bufLen: number
-  private sheetNames: T
-  private auth = Auth.instance
-  private sheetIds: { [x in keyof T]?: number } = {}
-  constructor(spreadsheetId: string, bufLen: number, sheetNames: T) {
-    this.spreadsheetId = spreadsheetId
-    this.title = moment().format('MMDDHHmm')
-    this.bufLen = bufLen
-    this.sheetNames = sheetNames
-  }
-
-  async init() {
-    await this.getSheetIdByNames()
-    await this.clearAllCells()
-  }
-
-  addSheet() {
-    return this.auth.fetchSheets().then(sheets => {
-      return this.spreadsheetId
-        ? sheets.spreadsheets.batchUpdate({
-            spreadsheetId: this.spreadsheetId,
-            requestBody: {
-              requests: [
-                {
-                  addSheet: {
-                    properties: {
-                      title: this.title
-                    }
-                  }
-                }
-              ]
-            }
-          })
-        : Promise.reject('Unable to get spreadSheet')
-    })
-  }
-
-  private appendSheet(data: RawData<T>) {
-    if (!data || data === {}) return Promise.resolve(null)
-    const requests = this.toRequest(data)
-
-    if (requests.length === 0) return Promise.resolve(null)
-
-    return this.auth.fetchSheets().then(sheets => {
-      return this.spreadsheetId
-        ? sheets.spreadsheets.batchUpdate({
-            spreadsheetId: this.spreadsheetId,
-            requestBody: {
-              requests
-            }
-          })
-        : Promise.reject('Unable to get spreadSheet')
-    })
-  }
-
-  private clearAllCells() {
-    return Auth.instance.fetchSheets().then(sheets =>
-      sheets.spreadsheets.batchUpdate({
+  getCells = (range: string) =>
+    Auth.instance
+      .fetchSheets()
+      .then(sheets =>
+        sheets.spreadsheets.values.get({
+          spreadsheetId: this.spreadsheetId,
+          range,
+          fields: 'values'
+        })
+      )
+      .then(({ data }) => data.values)
+  updateCell = <Value>(range: string, val: Value[][]) =>
+    Auth.instance.fetchSheets().then(sheets =>
+      sheets.spreadsheets.values.update({
+        range,
         spreadsheetId: this.spreadsheetId,
-        requestBody: {
-          requests: _.reduce(
-            this.sheetIds,
-            (acc, cur) => [
-              ...acc,
-              {
-                updateCells: {
-                  range: {
-                    sheetId: cur
-                  },
-                  fields: 'userEnteredValue'
-                }
-              }
-            ],
-            [] as sheets_v4.Schema$Request[]
-          )
-        }
+        requestBody: { values: val },
+        valueInputOption: 'RAW'
       })
     )
-  }
-  private async getSheetIdByNames() {
-    const sheets = await this.auth.fetchSheets()
-    const sheetProps = await sheets.spreadsheets.get({
-      spreadsheetId: this.spreadsheetId,
-      fields: 'sheets.properties.sheetId,sheets.properties.title'
-    })
-    const ids = _.reduce(
-      sheetProps.data.sheets,
-      (acc, cur) => ({
-        ...acc,
-        [cur.properties.title]: cur.properties.sheetId
-      }),
-      {} as { [key: string]: number }
-    )
-    console.log(ids)
-
-    for (const key of Object.keys(this.sheetNames)) {
-      if (this.sheetNames[key] in ids) {
-        this.sheetIds[key as keyof T] = ids[this.sheetNames[key]]
-      } else {
-        const {
-          data: { replies }
-        } = await sheets.spreadsheets.batchUpdate({
-          spreadsheetId: this.spreadsheetId,
-          requestBody: {
-            requests: [
-              {
-                addSheet: {
-                  properties: {
-                    title: this.sheetNames[key],
-                    gridProperties: {
-                      columnCount: 104
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        })
-
-        this.sheetIds[key as keyof T] = replies[0].addSheet.properties.sheetId
-      }
-    }
-    console.log(this.sheetIds)
-
-    return this.sheetIds
-  }
-
-  toRequest(raw: RawData<T>) {
-    return _.flatMap(raw, (rows, key) => [
-      {
-        appendCells: {
-          sheetId: this.sheetIds[key],
-          rows: rows.map(
-            cur =>
-              ({
-                values: [...cur].map(v => {
-                  if (_.isNil(v) || v === '') return { formattedValue: '' }
-                  if (_.isNumber(v))
-                    return { userEnteredValue: { numberValue: v } }
-                  if (_.isString(v))
-                    return { userEnteredValue: { stringValue: v } }
-                  if (v instanceof Object && 'formula' in v)
-                    return v.formula
-                      ? {
-                          userEnteredValue: {
-                            formulaValue:
-                              (v.formula[0] === '=' ? '' : '=') + v.formula
-                          }
-                        }
-                      : { formattedValue: '' }
-                  else return { userEnteredValue: { stringValue: String(v) } }
-                })
-              } as sheets_v4.Schema$RowData)
-          ),
-          fields: 'userEnteredValue'
-        }
-      },
-      {
-        updateDimensionProperties: {
-          properties: {
-            pixelSize: 21
-          },
-          range: {
-            sheetId: this.sheetIds[key],
-            dimension: 'ROWS',
-            startIndex: this.count - 1,
-            endIndex: this.count + raw[key].length
-          },
-          fields: '*'
-        }
-      }
-    ]) as sheets_v4.Schema$Request[]
-  }
-
-  async save(row: RawRow<T>) {
-    this.data =
-      this.data && row
-        ? _.mergeWith(this.data, row, (obj, src) =>
-            _.isArray(obj) ? [...obj, src] : [src]
-          )
-        : this.data
-
-    if (this.count === 0) {
-      await this.init()
-    }
-
-    ++this.count
-    if (this.count % this.bufLen === 0) {
-      await this.appendSheet(this.data)
-      this.data = {}
-    }
-    return Promise.resolve()
-  }
-
-  async saveImage(path: string) {
-    const drive = await this.auth.fetchDrive()
-  }
-
-  end() {
-    return this.appendSheet(this.data).then(() => {
-      this.data = {}
-      this.count = 0
-    })
-  }
 }
+export class Workbook<SheetNames extends { [key: string]: string }> {
+  private worksheets: { [P in keyof SheetNames]: xlsx.Sheet }
+  private rowCount = 1
+  private constructor(private workbook: xlsx.Workbook, sheetNames: SheetNames) {
+    this.worksheets = _.mapValues(
+      sheetNames,
+      name =>
+        workbook.sheets().find(sheet => sheet.name() === name) ||
+        workbook.addSheet(name)
+    )
+  }
 
-export async function newSpreadSheet(
-  title: string,
-  bufLen: number,
-  sheetNames: string[]
-) {
-  const sheets = await Auth.instance.fetchSheets()
-  const {
-    data: { spreadsheetId }
-  } = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: {
-        title
+  static async fromBlank<SheetNames extends { [key: string]: string }>(
+    sheetNames: SheetNames
+  ) {
+    const wb = await xlsx.fromBlankAsync()
+    const workbook = new Workbook(wb, sheetNames)
+    workbook.workbook.deleteSheet('Sheet1')
+    return workbook
+  }
+
+  static async fromData<SheetNames extends { [key: string]: string }>(
+    buf: Buffer,
+    sheetNames: SheetNames
+  ) {
+    const wb = await xlsx.fromDataAsync(buf)
+    return new Workbook(wb, sheetNames)
+  }
+
+  appendRow(
+    rows: {
+      [key in keyof SheetNames]: (string | number | { f: string } | void)[]
+    }
+  ) {
+    _.forEach(rows, (data, key) => {
+      if (!(key in this.worksheets)) return
+
+      const row = this.worksheets[key].row(this.rowCount)
+      for (
+        let i = 0, len = data.length, v = data[i];
+        i < len;
+        ++i, v = data[i]
+      ) {
+        if (_.isNil(v)) {
+          row.cell(i + 1).value('')
+        } else if (v instanceof Object) {
+          if (v.f) row.cell(i + 1).formula(v.f[0] === '=' ? v.f.substr(1) : v.f)
+        } else if (_.isNumber(v) || _.isString(v)) {
+          row.cell(i + 1).value(v)
+        } else {
+          row.cell(i + 1).value(String(v))
+        }
       }
-    },
-    fields: 'spreadsheetId'
-  })
+      row.height(15)
+    })
+    ++this.rowCount
+  }
+
+  toBuf() {
+    return this.workbook.outputAsync()
+  }
+
+  toFile(filepath: string) {
+    return this.workbook.toFileAsync(filepath)
+  }
 }
 
 export class CloudStorage {
@@ -354,18 +187,40 @@ export class CloudStorage {
     keyFilename: path.join(__dirname, '../data/service_account.json')
   })
   private bucket = this.storage.bucket('scraping-datafiles')
-  constructor(private pathname: string) {}
+  private zipper: archiver.Archiver
+  private uploader: stream.Writable
+  constructor(private pathname: string, zipFileName: string) {
+    this.zipper = archiver('zip')
+    this.uploader = this.bucket.file(zipFileName).createWriteStream()
+    this.zipper.pipe(this.uploader)
+  }
 
   readFile = (name: string) =>
     this.bucket.file(path.join(this.pathname, name)).download()
-  writeFile = (name: string, data: string | Buffer) =>
-    this.bucket
-      .file(path.join(this.pathname, name))
-      .save(data)
-      .then(() => path.join(this.pathname, name))
+  writeFile = (name: string, data: string | Buffer | stream.Readable) => {
+    this.zipper.append(data, { name })
+    return Promise.resolve(path.join(this.pathname, name))
+  }
+  upload = () =>
+    new Promise((resolve, reject) => {
+      this.uploader.on('close', resolve).on('error', reject)
 
-  saveExcel = (wb: Workbook) =>
-    wb.xlsx.writeBuffer().then(buf => this.writeFile('data.xlsx', buf as any))
+      this.zipper.finalize().catch(err => reject(err))
+    })
+  // this.bucket
+  //   .file(path.join(this.pathname, name))
+  //   .save(data)
+  //   .then(() => path.join(this.pathname, name))
+
+  readExcel = async <SheetNames extends { [key: string]: string }>(
+    name: string,
+    sheetNames: SheetNames
+  ) => Workbook.fromData((await this.readFile(name))[0], sheetNames)
+
+  saveExcel = async <SheetNames extends { [key: string]: string }>(
+    wb: Workbook<SheetNames>,
+    name: string
+  ) => this.writeFile(name, await wb.toBuf())
 
   uploadImg(folder: string, url: string, isURL = true) {
     const uuid = uuidv5(url, isURL ? uuidv5.URL : uuidv5.DNS)
@@ -385,11 +240,11 @@ export class CloudStorage {
       filter(res => !!res.data),
       map(res => Buffer.from(res.data)),
       mergeMap(buf => Jimp.read(buf).catch(() => null)),
-      filter((image: Jimp) => image !== undefined),
-      map(image => image.autocrop()),
+      filter(image => image !== undefined),
+      map((image: any) => image.autocrop()),
       mergeMap(image =>
         from(image.getBufferAsync(`image/${image.getExtension()}`)).pipe(
-          mergeMap(buf =>
+          mergeMap((buf: Buffer) =>
             this.writeFile(
               path.join(folder, uuid + '.' + image.getExtension()),
               buf
