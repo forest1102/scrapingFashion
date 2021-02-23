@@ -1,76 +1,64 @@
 import { execScrape } from './scrapers'
 import * as scheduler from 'node-schedule'
-import * as fs from 'fs-extra'
-import * as csv from 'csv-parse/lib/sync'
-import * as Diff from 'diff'
-import * as path from 'path'
 import { SpreadSheet } from './saver'
 import * as moment from 'moment'
-import stringify = require('csv-stringify')
-const LOCAL_SCHEDULE_PATH = path.join(__dirname, '../data/schedule.csv')
+import * as _ from 'lodash'
+const atob = <T>(str: T) =>
+  Buffer.from(JSON.stringify(str), 'utf8').toString('base64')
 async function init() {
+  const currentSchedule = scheduler.scheduledJobs
   const spreadsheet = new SpreadSheet(
     '1dtWIA9CLkzU_U_ujDtl-70UMb-KttUwGoMReStMXdv4'
   )
   const newSchedule: string[][] = await spreadsheet.getCells('A2:H')
-  let localSchedule = csv(
-    await fs.readFile(LOCAL_SCHEDULE_PATH).catch(err => ''),
-    {
-      skip_empty_lines: true,
-      relax_column_count: true,
-      trim: true,
-      from: 2
-    }
-  ) as string[][]
-  const diff = Diff.diffArrays(localSchedule, newSchedule, {})
-  let id = 1
-  diff.forEach((part, i) => {
-    if (part.removed) {
-      part.value.forEach((row, idx) => {
-        console.log(`delete job schedule-${id + idx}`)
-        scheduler.cancelJob(`schedule-${id + idx}`)
-      })
-    } else if (part.added) {
-      part.value.forEach((row, idx) => {
-        const rule = [row[0], row[1], '*/' + row[2], '*', '*'].join(' ')
-        const argv = ['', '', ...row.slice(3)]
 
-        const job = scheduler.scheduleJob(
-          `schedule-${id + idx}`,
-          rule,
-          function (argv: string[]) {
-            spreadsheet
-              .updateCell('I' + (id + idx), [
-                [moment().format('YYYY/MM/DD HH:mm:ss')]
-              ])
-              .then(() => {
-                console.log('started', argv)
-                execScrape(argv, count =>
-                  spreadsheet.updateCell('J' + (id + idx), [
-                    [moment().format('YYYY/MM/DD HH:mm:ss'), count]
-                  ])
-                )
-              })
-              .catch(err => console.log(err))
-          }.bind(null, argv)
-        )
-        console.log('new job: ', job.name, rule)
-      })
-      id += part.count
+  console.log('new schedule: ', newSchedule)
+  let scheduleToDel = { ...currentSchedule }
+  delete scheduleToDel['daily-update']
+  newSchedule.map((row, idx) => {
+    const name = atob(row)
+    const rule = [row[0], row[1], '*/' + row[2], '*', '*'].join(' ')
+    const _argv = ['', '', ...row.slice(3)]
+    if (name in currentSchedule) {
+      delete scheduleToDel[name]
     } else {
-      id += part.count
+      console.log('schedule: ' + name + ' is scheduled in ' + rule)
+      scheduler.scheduleJob(
+        name,
+        rule,
+        function (argv: string[], rowIdx: number) {
+          console.log('schedule-' + rowIdx + ' start with: ' + argv.join(' '))
+          spreadsheet
+            .updateCell('I' + rowIdx, [
+              [moment().format('YYYY/MM/DD HH:mm:ss')]
+            ])
+            .then(() => {
+              console.log('started', argv)
+              execScrape(argv, (count, err) => {
+                return spreadsheet.updateCell('J' + rowIdx, [
+                  [moment().format('YYYY/MM/DD HH:mm:ss'), count, err || '']
+                ])
+              })
+            })
+            .catch(err => {
+              return spreadsheet.updateCell('J' + rowIdx, [
+                [moment().format('YYYY/MM/DD HH:mm:ss'), -1, err]
+              ])
+            })
+            .catch(err => {
+              console.log(err)
+            })
+        }.bind(null, _argv, idx + 2)
+      )
     }
   })
-  stringify(newSchedule, { delimiter: ',' }, (err, output) => {
-    if (err) console.error(err)
-    else
-      fs.outputFile(LOCAL_SCHEDULE_PATH, output).catch(err =>
-        console.error(err)
-      )
+  _.forEach(scheduleToDel, (job, name) => {
+    console.log('schedule: ' + name + ' is canceled')
+    scheduler.cancelJob(name)
   })
 }
 
-scheduler.scheduleJob('daily-update', '0 0 * * * ', () => {
+scheduler.scheduleJob('daily-update', '* */30 * * * ', () => {
   init()
     .then(() => console.log('success'))
     .catch(err => console.error('error'))

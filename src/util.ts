@@ -1,7 +1,7 @@
 import * as urlPath from 'url'
 import * as moment from 'moment'
 import * as _ from 'lodash'
-import { Row } from 'exceljs'
+import * as xlsx from 'xlsx-populate'
 import * as cookie from 'cookie'
 export const commaToDot = (str?: string) => (str || '').replace(',', '.')
 
@@ -56,15 +56,9 @@ export const ObjectToArray = <T>(
     [] as Exclude<T, string[]>[]
   )
 
-export const setBackground = (row: Row, cells: string[], color: string) =>
+export const setBackground = (row: xlsx.Row, cells: string[], color: string) =>
   cells.forEach(c => {
-    row.getCell(c).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: {
-        argb: color
-      }
-    }
+    row.cell(c).style(color)
   })
 
 export const getBytes = (str: string) =>

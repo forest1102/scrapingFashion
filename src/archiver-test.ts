@@ -27,10 +27,16 @@ const zipper = new Zipper(path.join(__dirname, '../data/test.zip'))
 const dirname = path.join(__dirname, '../data/img')
 fs.readdir(dirname)
   .then(lists =>
-    lists.forEach(name =>
-      zipper.writeFile(fs.createReadStream(path.join(dirname, name)), name)
+    Promise.all(
+      lists.map(name =>
+        fs
+          .readFile(path.join(dirname, name))
+          .then(buf => zipper.writeFile(buf, name))
+      )
     )
   )
   .then(() => zipper.finalize())
-  .then(() => console.log('Success!'))
+  .then(() => {
+    process.exit()
+  })
   .catch(err => console.log(err))

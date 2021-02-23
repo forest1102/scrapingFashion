@@ -1,4 +1,4 @@
-import { from, of, throwError, EMPTY, Observable } from 'rxjs'
+import { from, of, throwError, EMPTY, Observable, Subscription } from 'rxjs'
 import { RxFetch } from '../fetch'
 import {
   map,
@@ -14,8 +14,6 @@ import {
 import * as client from 'cheerio-httpcli'
 
 import * as moment from 'moment'
-
-import * as path from 'path'
 
 import { Parser as FormulaParser } from 'hot-formula-parser'
 import * as _ from 'lodash'
@@ -33,20 +31,21 @@ import {
 
 // import value from './typing'
 import * as urlPath from 'url'
-import { randomDelay } from '../operators'
 import { Scraper } from '../scraperType'
 import List from '../lists'
-import { CloudStorage, Workbook, SpreadSheet } from '../saver'
+import { CloudStorage, Workbook } from '../saver'
 
 export const execScrape = (
   argv: any[],
-  after: (count: number) => Promise<any>
+  after: (count: number, err?: Error) => Promise<any>
 ) => {
   const start = moment()
   if (argv.length < 4) {
     console.log('設定が不十分です')
     process.exit(1)
   }
+  let subsc: Subscription
+  let save = (err?: Error): Promise<any> => Promise.resolve()
   const scraperName = argv[2]
   const ScraperModule = require(`./${scraperName}`).default
   const DATA_PATH = argv[3]
@@ -56,8 +55,40 @@ export const execScrape = (
     'archive/' +
       DATA_PATH.replace(/\//g, '_') +
       moment().format(' YYYY-MM-DD HH:mm:ss') +
-      '.zip'
+      '.zip',
+    err => {
+      subsc.unsubscribe()
+      save(err).catch(err => console.log(err))
+    }
   )
+  let _tmp$sigint_listener: NodeJS.SignalsListener
+  const sigintListeners = process.listeners('SIGINT')
+  for (const listener of sigintListeners) {
+    if (listener.name === '_tmp$sigint_listener') {
+      // this is the unique name of the listener function
+      _tmp$sigint_listener = listener // extract and save for later
+      process.removeListener('SIGINT', listener)
+      break
+    }
+  }
+  ;(['SIGINT', 'SIGTERM'] as NodeJS.Signals[]).forEach(sig => {
+    process.on(sig, () => {
+      console.log('interrupt ', sig)
+      subsc.unsubscribe()
+
+      save()
+        .then(name => {
+          console.log('Saved')
+          process.exit()
+        })
+        .catch(err => {
+          console.log('error while saving: ', err)
+          process.exit()
+        })
+      // process.exit()
+    })
+  })
+
   const list = new List(storage)
   list
     .loadFiles()
@@ -70,40 +101,23 @@ export const execScrape = (
         _.slice(argv, 3)
       )
 
-      let _tmp$sigint_listener: NodeJS.SignalsListener
-      const sigintListeners = process.listeners('SIGINT')
-      for (const listener of sigintListeners) {
-        if (listener.name === '_tmp$sigint_listener') {
-          // this is the unique name of the listener function
-          _tmp$sigint_listener = listener // extract and save for later
-          process.removeListener('SIGINT', listener)
-          break
-        }
-      }
-
       const workbook = await Workbook.fromBlank({
-        processed_data: '変換後',
-        data: 'data',
-        output_data: 'Sheet2'
-      })
-      const workbookMacro = await storage.readExcel('putupbuyma-0.60.xlsm', {
         processed_data: '変換後',
         data: 'data',
         output_data: '出品用data'
       })
+      const workbookMacro = await storage.readExcel('putupbuyma-0.60.xlsm', {
+        processed_data: '変換後',
+        data: 'data',
+        output_data: 'Sheet2'
+      })
       let count = 0
-      const save = () =>
+      save = (err?: Error) =>
         Promise.all([
-          storage.saveExcel(
-            workbook,
-            start.format('YYYY-MM-DD HH:mm:ss ') + ' data.xlsx'
-          ),
-          storage.saveExcel(
-            workbookMacro,
-            start.format('YYYY-MM-DD HH:mm:ss ') + ' putupbuyma-0.60.xlsm'
-          ),
+          storage.saveExcel(workbook, 'data.xlsx'),
+          storage.saveExcel(workbookMacro, 'putupbuyma-0.60.xlsm'),
           storage.upload(),
-          after(count)
+          after(count, err)
         ])
 
       // const workbook = new Excel.Workbook()
@@ -116,36 +130,7 @@ export const execScrape = (
       const getNextCatch = makeRingItr(list.catchWords)
       const getNextMark = makeRingItr(list.marks)
       const getNextRegId = makeRegId(list.constants['管理番号'])
-      if (process.platform === 'win32') {
-        const rl = require('readline').createInterface({
-          input: process.stdin,
-          output: process.stdout
-        })
-
-        rl.on('SIGINT', function () {
-          //@ts-ignore
-          process.emit('SIGINT')
-        })
-      }
-
-      // process.stdin.resume()
-      process.on('SIGINT', () => {
-        console.log('interrupt')
-
-        save()
-          .then(name => {
-            console.log('Saved')
-            process.exit()
-          })
-          .catch(err => {
-            console.log('error while saving: ', err)
-            process.exit()
-          })
-        // process.exit()
-      })
-
-      console.log(client.headers)
-      from(list.urls)
+      subsc = from(list.urls)
         .pipe(
           concatMap(url =>
             scraper.beforeFetchPages(url).pipe(
@@ -367,33 +352,33 @@ export const execScrape = (
         )
         .subscribe(
           v => {
-            // sheet.data.addRow(v.data).height = LINE_HEIGHT
-            // const lastRow = {
-            //   processed: sheet.processed_data.addRow(v.processed_data),
-            //   output: sheet.output_data.addRow(v.output_data)
-            // }
-            // lastRow.processed.height = LINE_HEIGHT
-            // lastRow.output.height = LINE_HEIGHT
-            workbook.appendRow(v)
-            workbookMacro.appendRow(v)
+            const lastRow = workbook.appendRow(v)
+            const lastRowMacro = workbookMacro.appendRow(v)
             ++count
 
+            if (lastRow.processed_data.cell('CX').value() >= 60) {
+              setBackground(lastRow.processed_data, ['CX', 'E'], 'FFFF00')
+              setBackground(lastRow.output_data, ['CX', 'E'], 'FFFF00')
+            }
+            if (lastRowMacro.processed_data.cell('CX').value() >= 60) {
+              setBackground(lastRowMacro.processed_data, ['CX', 'E'], 'FFFF00')
+              setBackground(lastRowMacro.output_data, ['CX', 'E'], 'FFFF00')
+            }
             // if (lastRow.processed.getCell('CX').result >= 60) {
-            //   setBackground(lastRow.processed, ['CX', 'E'], 'FFFF00')
-            //   setBackground(lastRow.output, ['CX', 'E'], 'FFFF00')
             // }
 
             // spreadSheet.save(v).catch(err => console.error(err))
           },
           e => {
             console.error(e)
-            save()
+            save(e)
               // spreadSheet
               //   .end()
               .then(() => console.log('Saved!'))
               .catch(err => console.log('error while saving: ', err))
           },
           () => {
+            console.log('Finished!\n')
             save()
               // spreadSheet
               //   .end()
@@ -405,8 +390,23 @@ export const execScrape = (
             )
           }
         )
+      // if (process.platform === 'win32') {
+      //   const rl = require('readline').createInterface({
+      //     input: process.stdin,
+      //     output: process.stdout
+      //   })
+
+      //   rl.on('SIGINT', function () {
+      //     //@ts-ignore
+      //     process.emit('SIGINT')
+      //   })
+      // }
+
+      // process.stdin.resume()
+
+      console.log(client.headers)
     })
     .catch(err => {
-      console.log(err)
+      return after(0, err)
     })
 }

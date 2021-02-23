@@ -145,12 +145,12 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
   }
 
   appendRow(
-    rows: {
+    new_row: {
       [key in keyof SheetNames]: (string | number | { f: string } | void)[]
     }
   ) {
-    _.forEach(rows, (data, key) => {
-      if (!(key in this.worksheets)) return
+    const rows = _.mapValues(new_row, (data, key) => {
+      if (!(key in this.worksheets)) return null
 
       const row = this.worksheets[key].row(this.rowCount)
       for (
@@ -169,8 +169,10 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
         }
       }
       row.height(15)
+      return row
     })
     ++this.rowCount
+    return rows
   }
 
   toBuf() {
@@ -189,9 +191,27 @@ export class CloudStorage {
   private bucket = this.storage.bucket('scraping-datafiles')
   private zipper: archiver.Archiver
   private uploader: stream.Writable
-  constructor(private pathname: string, zipFileName: string) {
+  private finalized = false
+  constructor(
+    private pathname: string,
+    zipFileName: string,
+    onSaveError: (err: Error) => any
+  ) {
     this.zipper = archiver('zip')
-    this.uploader = this.bucket.file(zipFileName).createWriteStream()
+    this.uploader = this.bucket.file(zipFileName).createWriteStream({
+      metadata: {
+        contentType: 'application/zip'
+      },
+      resumable: true
+    })
+    this.uploader.on('error', err => onSaveError(err))
+    this.zipper.on('warning', err => {
+      if (err.code === 'ENOENT') {
+        console.log(err)
+      } else {
+        onSaveError(err)
+      }
+    })
     this.zipper.pipe(this.uploader)
   }
 
@@ -203,8 +223,12 @@ export class CloudStorage {
   }
   upload = () =>
     new Promise((resolve, reject) => {
-      this.uploader.on('close', resolve).on('error', reject)
-
+      if (this.finalized) {
+        resolve('Finalized already')
+        return
+      }
+      this.finalized = true
+      this.uploader.on('end', resolve)
       this.zipper.finalize().catch(err => reject(err))
     })
   // this.bucket

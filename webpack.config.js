@@ -1,13 +1,21 @@
 const path = require('path')
+
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
+  .BundleAnalyzerPlugin
+
 module.exports = {
-  mode: 'production',
-  entry: './src/index.ts',
+  mode: 'development',
+  entry: {
+    index: './src/index.ts',
+    test: './src/test.ts'
+  },
   target: 'node',
   output: {
     path: path.join(__dirname, 'dist'),
-    filename: 'index.js',
+    filename: '[name].js',
     libraryTarget: 'commonjs2'
   },
+  // plugins: [new BundleAnalyzerPlugin()],
   module: {
     rules: [
       {
