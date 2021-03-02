@@ -1,16 +1,6 @@
 import { getElementObj } from '../../observable'
 import { from, of } from 'rxjs'
-import { RxFetch, submitLoginForm, fetchAndSaveCookies } from '../../fetch'
-import {
-  map,
-  tap,
-  concatMap,
-  filter,
-  find,
-  catchError,
-  mapTo
-} from 'rxjs/operators'
-import * as _ from 'lodash'
+import { map } from 'rxjs/operators'
 
 import * as client from 'cheerio-httpcli'
 
@@ -21,7 +11,10 @@ import {
   filterByWords,
   swapElement,
   sizeCompare,
-  execAllGen
+  execAllGen,
+  deburr,
+  thru,
+  isEmpty
 } from '../../util'
 
 export default class extends Scraper {
@@ -79,7 +72,7 @@ export default class extends Scraper {
         productName: [
           '#productLeft .product-name',
           e =>
-            _.deburr(e.first().text())
+            deburr(e.first().text())
               .replace(/[`"'*]|\s{2,}/g, '')
               .trim()
               .toUpperCase()
@@ -129,10 +122,10 @@ export default class extends Scraper {
         category_tree: [
           '#wrapper .breadcrumb span[itemprop="name"]',
           e =>
-            _.chain(e.toArray())
-              .map(el => ($(el).text() || '').replace(/^\s*_|\s*$/, ''))
+            e
+              .toArray()
+              ?.map(el => ($(el).text() || '').replace(/^\s*_|\s*$/, ''))
               .slice(1, -1)
-              .value()
         ]
         // color: [
         //   '#main .color-value',
@@ -146,18 +139,18 @@ export default class extends Scraper {
         euro_price: null,
         old_price: obj.old_price || obj.price,
         description: obj.description + '\r\n' + obj.features,
-        gender: _.includes(obj.features, 'Gender: WOMAN') ? 'WOMEN' : 'MEN'
+        gender: obj.features.includes('Gender: WOMAN') ? 'WOMEN' : 'MEN'
       })),
       map(obj => ({
         ...obj,
         brand_sex: obj.brand + (obj.gender === 'MEN' ? ' M' : ''),
-        size: _.thru(
+        size: thru(
           obj.size
             .map(s => s.replace(/[½+]/, '.5').replace(/ - .+/i, ''))
             .sort(sizeCompare),
           arr => (arr && arr.length > 0 ? arr : ['UNI'])
         ),
-        currency: 'JPY'
+        currency: '€'
         // image: _.includes(obj.category_tree, 'Shoes')
         //   ? swapElement(obj.image, 0, 1)
         //   : obj.image
@@ -182,7 +175,7 @@ export default class extends Scraper {
 
         if ((tmp = descText.match(/made in (\w+)/i))) {
           country = tmp[1]
-          if (!_.isEmpty(size_infos)) size_infos.push(tmp[0])
+          if (!isEmpty(size_infos)) size_infos.push(tmp[0])
         }
 
         if ((tmp = descText.match(/^season: (\w+)/im))) season = tmp[1]
@@ -191,11 +184,10 @@ export default class extends Scraper {
           sku = tmp[1].replace(/[+&]/g, '')
 
         if ((tmp = descText.match(/^color: (.+)/im)))
-          color =
-            tmp[1] &&
-            _.flatMap(tmp[1].split('/'), str =>
-              filterByWords(this.lists.colorMap, str)
-            )
+          color = tmp[1]
+            ?.split('/')
+            ?.map(str => filterByWords(this.lists.colorMap, str))
+            ?.reduce((acc, cur) => [...acc, ...cur], [] as string[])
 
         // if (obj.fit) {
         //   if (
@@ -248,19 +240,19 @@ export default class extends Scraper {
       }),
       map(obj => ({
         ...obj,
-        size_chart: _.chain(this.lists.AHsize)
-          .get([obj.brand_sex.toUpperCase()])
-          .thru(
-            v =>
-              v &&
-              (_.includes(obj.category_tree, 'shoes')
-                ? v['shoes'] && v['shoes'] + ' SHOES'
-                : v['not shoes'])
-          )
-          .thru(v => v && v + ' ' + obj.gender)
-          .defaultTo('')
-          .value(),
-        category: _.thru(
+        size_chart:
+          thru(
+            thru(
+              this.lists.AHsize?.[obj.brand_sex.toUpperCase()],
+              v =>
+                v &&
+                (obj.category_tree?.indexOf('shoes') !== -1
+                  ? v['shoes'] && v['shoes'] + ' SHOES'
+                  : v['not shoes'])
+            ),
+            v => v && v + ' ' + obj.gender
+          ) || '',
+        category: thru(
           findByWords(this.lists.categories, obj.productName),
           category => (category ? `${obj.gender} ${category}` : '')
         ),

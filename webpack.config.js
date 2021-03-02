@@ -4,10 +4,11 @@ const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
   .BundleAnalyzerPlugin
 
 module.exports = {
-  mode: 'development',
+  mode: 'production',
   entry: {
     index: './src/index.ts',
-    test: './src/test.ts'
+    test: './src/test.ts',
+    agenda: './src/agenda-test.ts'
   },
   target: 'node',
   output: {

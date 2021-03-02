@@ -7,7 +7,6 @@ import AxiosCookiejarSupport from 'axios-cookiejar-support'
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
 import { retryWithDelay } from './operators'
 import * as https from 'https'
-import * as _ from 'lodash'
 import * as URLSearchParams from 'url-search-params'
 import * as cheerio from 'cheerio'
 
@@ -101,11 +100,10 @@ export const submitLoginForm = (
     ),
     tap(() => console.log(loginUrl)),
     map(() =>
-      _.chain(jar.serializeSync())
-        .get('cookies')
-        .map(({ key, value }) => `${key}=${value}`)
+      jar
+        .serializeSync()
+        ?.cookies?.map(({ key, value }) => `${key}=${value}`)
         .join('; ')
-        .value()
     )
   )
 }
@@ -122,11 +120,10 @@ export const fetchAndSaveCookies = (config: AxiosRequestConfig) => {
     })
   ).pipe(
     map(() =>
-      _.chain(jar.serializeSync())
-        .get('cookies')
-        .map(({ key, value }) => `${key}=${value}`)
+      jar
+        .serializeSync()
+        ?.cookies?.map(({ key, value }) => `${key}=${value}`)
         .join('; ')
-        .value()
     ),
     tap(cookieStr => client.set('headers', { Cookie: cookieStr }))
   )
@@ -153,11 +150,10 @@ export const getAuthCredential = (
   ).pipe(
     tap(() => console.log(url)),
     map(() =>
-      _.chain(jar.serializeSync())
-        .get('cookies')
-        .map(({ key, value }) => `${key}=${value}`)
+      jar
+        .serializeSync()
+        ?.cookies?.map(({ key, value }) => `${key}=${value}`)
         .join('; ')
-        .value()
     )
   )
 }

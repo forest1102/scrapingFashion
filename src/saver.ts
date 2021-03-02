@@ -1,6 +1,6 @@
 import * as path from 'path'
 import * as _ from 'lodash'
-import { Storage } from '@google-cloud/storage'
+import { CreateWriteStreamOptions, Storage } from '@google-cloud/storage'
 import { v5 as uuidv5 } from 'uuid'
 import { from, MonoTypeOperatorFunction, EMPTY } from 'rxjs'
 import {
@@ -14,7 +14,7 @@ import {
 } from 'rxjs/operators'
 import axios, { AxiosResponse } from 'axios'
 import { httpsAgent, userAgent } from './fetch'
-import { retryWithDelay } from '../src_arc/monti/src/operators'
+import { retryWithDelay } from '../src/operators'
 import Jimp = require('jimp/dist')
 import * as xlsx from 'xlsx-populate'
 import { drive_v3, google, sheets_v4 } from 'googleapis'
@@ -146,26 +146,28 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
 
   appendRow(
     new_row: {
-      [key in keyof SheetNames]: (string | number | { f: string } | void)[]
+      [key in keyof SheetNames]:
+        | {
+            [key: number]: string | number | { f: string } | void
+          }
+        | string[]
     }
   ) {
     const rows = _.mapValues(new_row, (data, key) => {
       if (!(key in this.worksheets)) return null
 
       const row = this.worksheets[key].row(this.rowCount)
-      for (
-        let i = 0, len = data.length, v = data[i];
-        i < len;
-        ++i, v = data[i]
-      ) {
+      for (const i in data) {
+        const v = data[i]
         if (_.isNil(v)) {
-          row.cell(i + 1).value('')
+          continue
         } else if (v instanceof Object) {
-          if (v.f) row.cell(i + 1).formula(v.f[0] === '=' ? v.f.substr(1) : v.f)
+          if (v.f)
+            row.cell(+i + 1).formula(v.f[0] === '=' ? v.f.substr(1) : v.f)
         } else if (_.isNumber(v) || _.isString(v)) {
-          row.cell(i + 1).value(v)
+          row.cell(+i + 1).value(v)
         } else {
-          row.cell(i + 1).value(String(v))
+          row.cell(+i + 1).value(String(v))
         }
       }
       row.height(15)
@@ -189,52 +191,38 @@ export class CloudStorage {
     keyFilename: path.join(__dirname, '../data/service_account.json')
   })
   private bucket = this.storage.bucket('scraping-datafiles')
-  private zipper: archiver.Archiver
-  private uploader: stream.Writable
-  private finalized = false
   constructor(
-    private pathname: string,
-    zipFileName: string,
-    onSaveError: (err: Error) => any
-  ) {
-    this.zipper = archiver('zip')
-    this.uploader = this.bucket.file(zipFileName).createWriteStream({
-      metadata: {
-        contentType: 'application/zip'
-      },
-      resumable: true
+    private pathname: string = '',
+    private saveFileName: string = ''
+  ) {}
+
+  listFiles = (pathname?: string) =>
+    this.bucket.getFiles({ prefix: pathname || this.pathname })
+
+  createWriteStream = (name: string, option?: CreateWriteStreamOptions) =>
+    this.bucket
+      .file(path.join(this.saveFileName, name))
+      .createWriteStream(option)
+
+  deleteFolder = (foldername: string) =>
+    this.bucket.deleteFiles({ prefix: foldername })
+
+  uploadFrom = (filepath: string, to: string) =>
+    this.bucket.upload(filepath, {
+      destination: path.join(this.saveFileName, to)
     })
-    this.uploader.on('error', err => onSaveError(err))
-    this.zipper.on('warning', err => {
-      if (err.code === 'ENOENT') {
-        console.log(err)
-      } else {
-        onSaveError(err)
-      }
-    })
-    this.zipper.pipe(this.uploader)
-  }
 
   readFile = (name: string) =>
     this.bucket.file(path.join(this.pathname, name)).download()
   writeFile = (name: string, data: string | Buffer | stream.Readable) => {
-    this.zipper.append(data, { name })
-    return Promise.resolve(path.join(this.pathname, name))
+    const filename = path.join(this.saveFileName, name)
+    return this.bucket
+      .file(filename)
+      .save(data, {
+        gzip: true
+      })
+      .then(() => Promise.resolve(filename))
   }
-  upload = () =>
-    new Promise((resolve, reject) => {
-      if (this.finalized) {
-        resolve('Finalized already')
-        return
-      }
-      this.finalized = true
-      this.uploader.on('end', resolve)
-      this.zipper.finalize().catch(err => reject(err))
-    })
-  // this.bucket
-  //   .file(path.join(this.pathname, name))
-  //   .save(data)
-  //   .then(() => path.join(this.pathname, name))
 
   readExcel = async <SheetNames extends { [key: string]: string }>(
     name: string,
@@ -245,6 +233,9 @@ export class CloudStorage {
     wb: Workbook<SheetNames>,
     name: string
   ) => this.writeFile(name, await wb.toBuf())
+  // wb
+  //   .toBuf()
+  //   .then(buf => this.bucket.file(path.join('archive/', name)).save(buf))
 
   uploadImg(folder: string, url: string, isURL = true) {
     const uuid = uuidv5(url, isURL ? uuidv5.URL : uuidv5.DNS)
@@ -254,7 +245,7 @@ export class CloudStorage {
       axios.get(url, {
         responseType: 'arraybuffer',
         httpsAgent,
-        headers: { 'user-agent': userAgent }
+        headers: { 'user-agent': userAgent, 'Content-Encoding': 'gzip' }
       })
     ).pipe(
       tap(res => {

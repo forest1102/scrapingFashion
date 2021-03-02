@@ -36,14 +36,14 @@ export const makeRegId = function* (id: string, start = 2) {
   }
 }
 
-export const ObjectToArray = <T>(
-  toArrIndex: { [key: number]: string },
+export const ObjectToArray = <T, ArrIdx extends { [key: number]: string }>(
+  toArrIndex: ArrIdx,
   obj: { [key: string]: T }
 ) =>
   _.reduce(
     toArrIndex,
     (acc, value, key) => {
-      const curVal = obj[value]
+      const curVal = obj[value as string]
       if (curVal instanceof Array) {
         acc[key] = curVal.join(',')
       } else if (_.isNil(curVal)) {
@@ -53,7 +53,7 @@ export const ObjectToArray = <T>(
       }
       return acc
     },
-    [] as Exclude<T, string[]>[]
+    {} as { [key in keyof ArrIdx]: Exclude<T, string[]> }
   )
 
 export const setBackground = (row: xlsx.Row, cells: string[], color: string) =>
@@ -133,6 +133,25 @@ export const updateCookie = (cookieStr: string, key: string, val: string) => {
     ''
   )
 }
+
+export const isEmpty = <T>(arr: T[]) => arr && arr.length > 0
+export const thru = <T, U>(a: T, func: (a: T) => U) => func(a)
+export const deburr = (s: string) =>
+  s
+    .trim()
+    .replace(/`|'|"/g, '')
+    .replace(/[àâä]/g, 'a')
+    .replace(/[ÀÂÄ]/g, 'A')
+    .replace(/[éèêë]/g, 'e')
+    .replace(/[ÉÈÊË]/g, 'e')
+    .replace(/[îï]/g, 'i')
+    .replace(/[ÎÏ]/g, 'I')
+    .replace(/[ôö]/g, 'o')
+    .replace(/[ÔÖ]/g, 'O')
+    .replace(/[ùûü]/g, 'u')
+    .replace(/[ÙÛÜ]/g, 'U')
+    .replace(/[ÿ]/g, 'y')
+    .replace(/[Ÿ]/g, 'Y')
 
 export const execIfNotEmpty = (str: string | null, f: (string) => string) =>
   str ? f(str) : ''

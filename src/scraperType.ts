@@ -1,7 +1,7 @@
 import { Observable, of } from 'rxjs'
 import { CheerioStaticEx } from 'cheerio-httpcli'
 import List from './lists'
-import { getAllPagesRx } from '../src_arc/fromda/src/observable'
+import { getAllPagesRx } from '../src/observable'
 export abstract class Scraper {
   constructor(
     protected isItaly: boolean,
