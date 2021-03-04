@@ -89,6 +89,7 @@ export default class List {
     '※購入者の支払方法': string
     '買付先ショップ名': string
     '関税': '関税元払い'
+    'フォルダ': string
   }
 
   async loadFiles() {

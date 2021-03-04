@@ -177,6 +177,10 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
     return rows
   }
 
+  getCell(sheet: string, target: string) {
+    return this.workbook.sheet(sheet).cell(target)
+  }
+
   toBuf() {
     return this.workbook.outputAsync()
   }
@@ -186,6 +190,9 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
   }
 }
 
+const toFolder = (foldername: string) =>
+  foldername && !foldername.endsWith('/') ? foldername + '/' : foldername
+
 export class CloudStorage {
   private storage = new Storage({
     keyFilename: path.join(__dirname, '../data/service_account.json')
@@ -194,10 +201,13 @@ export class CloudStorage {
   constructor(
     private pathname: string = '',
     private saveFileName: string = ''
-  ) {}
+  ) {
+    this.pathname = toFolder(this.pathname)
+    this.saveFileName = toFolder(this.saveFileName)
+  }
 
   listFiles = (pathname?: string) =>
-    this.bucket.getFiles({ prefix: pathname || this.pathname })
+    this.bucket.getFiles({ prefix: toFolder(pathname) || this.pathname })
 
   createWriteStream = (name: string, option?: CreateWriteStreamOptions) =>
     this.bucket
@@ -263,7 +273,7 @@ export class CloudStorage {
             this.writeFile(
               path.join(folder, uuid + '.' + image.getExtension()),
               buf
-            )
+            ).then(() => uuid + '.' + image.getExtension())
           )
         )
       )

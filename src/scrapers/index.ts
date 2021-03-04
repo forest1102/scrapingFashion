@@ -37,10 +37,11 @@ import { omit } from 'lodash'
 import * as path from 'path'
 
 export const execScrape = (
-  argv: any[],
+  argv: string[],
   after: (count: number, saveTo: string, err?: Error) => Promise<any>,
   onData?: (count: number) => void
 ) => {
+  const formatter = 'YYYY-MM-DD HH mm'
   let count = 0
   let saveTo = ''
   try {
@@ -52,11 +53,8 @@ export const execScrape = (
     const scraperName = argv[2]
     const ScraperModule = require(`./${scraperName}`).default
     const DATA_PATH = argv[3]
-    saveTo = path.join(
-      'archive/',
-      DATA_PATH + '/',
-      moment().format(' YYYY-MM-DD HH:mm:ss')
-    )
+    saveTo = 'archive/' + DATA_PATH.replace(/\//g, '_') + ' '
+    moment().format(formatter)
     let subsc: Subscription
     let save = (err?: Error): Promise<any> => Promise.resolve()
     const isItaly = argv[4] === 'italy'
@@ -111,17 +109,25 @@ export const execScrape = (
           data: 'data',
           output_data: 'Sheet2'
         })
-        save = (err?: Error) =>
-          storage
-            .saveExcel(workbook, 'data.xlsx')
+        save = (err?: Error) => {
+          if (list.constants.フォルダ)
+            workbookMacro
+              .getCell('Sheet1', 'I2')
+              .value(path.win32.join(list.constants.フォルダ, DATA_PATH))
+          return storage
+            .saveExcel(workbook, start.format(formatter) + ' data.xlsx')
             .then(
               () => new Promise((resolve, reject) => setTimeout(resolve, 100))
             )
             .then(() =>
-              storage.saveExcel(workbookMacro, 'putupbuyma-0.60.xlsm')
+              storage.saveExcel(
+                workbookMacro,
+                start.format(formatter) + 'putupbuyma-0.60.xlsm'
+              )
             )
             .then(() => after(count, saveTo, err).catch(e => console.log(e)))
             .catch(err => after(count, saveTo, err))
+        }
 
         // const workbook = new Excel.Workbook()
         // const sheet = {
@@ -280,13 +286,12 @@ export const execScrape = (
                 .filter(s => s)
                 .join('\n\n'),
               comment: {
-                f: `SUBSTITUTE(CR${i + 2},"XXX",CQ${
-                  i + 2
-                }) & CHAR(10) & CHAR(10) &AG${i + 2}& CHAR(10) & CHAR(10) &AK${
-                  i + 2
-                }& CHAR(10) & CHAR(10) &M${i + 2}& CHAR(10) & CHAR(10) &AB${
-                  i + 2
-                }& CHAR(10) & CHAR(10) &P${i + 2}`
+                f: `SUBSTITUTE(CR${i + 2},"XXX",CQ${i +
+                  2}) & CHAR(10) & CHAR(10) &AG${i +
+                  2}& CHAR(10) & CHAR(10) &AK${i +
+                  2}& CHAR(10) & CHAR(10) &M${i +
+                  2}& CHAR(10) & CHAR(10) &AB${i +
+                  2}& CHAR(10) & CHAR(10) &P${i + 2}`
               },
               euro_price: obj.euro_price || {
                 f:

@@ -18,52 +18,56 @@ const agendaNames = Object.freeze({
 } as const)
 
 agenda.define(agendaNames.zipFiles, { concurrency: 1 }, async (job, done) => {
+  const localFilename = path.join(__dirname, '../data/', uuid() + '.zip')
   let saveTo = job.attrs.data.saveTo as string
   if (!saveTo.endsWith('/')) saveTo += '/'
-
-  console.log('zip files from: ', saveTo)
-  const storage = new CloudStorage()
-  const [files] = await storage.listFiles(saveTo)
-  const localFilename = path.join(__dirname, '../data/', uuid() + '.zip')
-  const localSaver = fs.createWriteStream(localFilename)
-  localSaver.on('close', () => {
-    storage
-      .uploadFrom(localFilename, path.join(saveTo.slice(0, -1) + '.zip'))
-      .then(() => fs.unlink(localFilename))
-      .then(() => storage.deleteFolder(saveTo))
-      .then(() => done())
-      .catch(done)
-  })
-  const zipper = archiver('zip', {
-    zlib: {
-      level: 9
-    }
-  })
-  zipper.on('warning', function(err) {
-    if (err.code === 'ENOENT') {
-      // log warning
-      console.log(err)
-    } else {
-      // throw error
-      fs.unlink(localFilename)
-        .then(() => done(err))
-        .catch(() => done(Error('unable to delete')))
-    }
-  })
-  zipper.pipe(localSaver)
-  for (let i = 0, len = files.length; i < len; ++i) {
-    const name = files[i].name.slice(saveTo.length)
-    zipper.append(
-      files[i].createReadStream().on('end', () => {
-        console.log(`${i} / ${len} zipped: `, name)
-      }),
-      {
-        name
+  try {
+    console.log('zip files from: ', saveTo)
+    const storage = new CloudStorage()
+    const [files] = await storage.listFiles(saveTo)
+    const localSaver = fs.createWriteStream(localFilename)
+    localSaver.on('close', () => {
+      storage
+        .uploadFrom(localFilename, path.join(saveTo.slice(0, -1) + '.zip'))
+        .then(() => fs.unlink(localFilename))
+        .then(() => storage.deleteFolder(saveTo))
+        .then(() => done())
+        .catch(done)
+    })
+    const zipper = archiver('zip', {
+      zlib: {
+        level: 9
       }
-    )
+    })
+    zipper.on('warning', function(err) {
+      if (err.code === 'ENOENT') {
+        // log warning
+        console.log(err)
+      } else {
+        // throw error
+        fs.unlink(localFilename)
+          .then(() => done(err))
+          .catch(() => done(Error('unable to delete')))
+      }
+    })
+    zipper.pipe(localSaver)
+    for (let i = 0, len = files.length; i < len; ++i) {
+      const name = files[i].name.slice(saveTo.length)
+      zipper.append(
+        files[i].createReadStream().on('end', () => {
+          console.log(`${i} / ${len} zipped: `, name)
+        }),
+        {
+          name
+        }
+      )
+    }
+    await zipper.finalize()
+    console.log('zip finalized')
+  } catch (e) {
+    console.log(e)
+    await fs.unlink(localFilename).catch(e => done(e))
   }
-  await zipper.finalize()
-  console.log('zip finalized')
 })
 agenda.define('exec-scrape', { concurrency: 1 }, async (job, done) => {
   const spreadsheet = new SpreadSheet(
