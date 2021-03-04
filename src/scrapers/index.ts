@@ -113,7 +113,7 @@ export const execScrape = (
           if (list.constants.フォルダ)
             workbookMacro
               .getCell('Sheet1', 'I2')
-              .value(path.win32.join(list.constants.フォルダ, DATA_PATH))
+              .value(path.win32.join(list.constants.フォルダ, saveTo))
           return storage
             .saveExcel(workbook, start.format(formatter) + ' data.xlsx')
             .then(
