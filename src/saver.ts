@@ -1,6 +1,10 @@
 import * as path from 'path'
 import * as _ from 'lodash'
-import { CreateWriteStreamOptions, Storage } from '@google-cloud/storage'
+import {
+  Bucket,
+  CreateWriteStreamOptions,
+  Storage
+} from '@google-cloud/storage'
 import { v5 as uuidv5 } from 'uuid'
 import { from, MonoTypeOperatorFunction, EMPTY } from 'rxjs'
 import {
@@ -177,6 +181,18 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
     return rows
   }
 
+  copySheets(wb: Workbook<SheetNames>) {
+    _.forEach(this.worksheets, (sheet, key) => {
+      const readFrom = wb.worksheets[key]
+      if (!readFrom) return
+      readFrom.usedRange().forEach((cell: xlsx.Cell) => {
+        const writeCell = sheet.row(cell.rowNumber()).cell(cell.columnNumber())
+        if (cell.formula()) writeCell.formula(cell.formula())
+        else writeCell.value(cell.value() as any)
+      })
+    })
+  }
+
   getCell(sheet: string, target: string) {
     return this.workbook.sheet(sheet).cell(target)
   }
@@ -193,42 +209,46 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
 const toFolder = (foldername: string) =>
   foldername && !foldername.endsWith('/') ? foldername + '/' : foldername
 
+export class LocalStorage {
+  private pathname: string
+  constructor(pathname: string) {
+    this.pathname = toFolder(pathname)
+  }
+}
+
 export class CloudStorage {
   private storage = new Storage({
     keyFilename: path.join(__dirname, '../data/service_account.json')
   })
-  private bucket = this.storage.bucket('scraping-datafiles')
-  constructor(
-    private pathname: string = '',
-    private saveFileName: string = ''
-  ) {
+  private bucket: Bucket
+  constructor(bucketName: string, private pathname: string = '') {
+    this.bucket = this.storage.bucket(bucketName)
     this.pathname = toFolder(this.pathname)
-    this.saveFileName = toFolder(this.saveFileName)
   }
 
   listFiles = (pathname?: string) =>
     this.bucket.getFiles({ prefix: toFolder(pathname) || this.pathname })
 
   createWriteStream = (name: string, option?: CreateWriteStreamOptions) =>
-    this.bucket
-      .file(path.join(this.saveFileName, name))
-      .createWriteStream(option)
+    this.bucket.file(path.join(this.pathname, name)).createWriteStream(option)
 
   deleteFolder = (foldername: string) =>
     this.bucket.deleteFiles({ prefix: foldername })
 
   uploadFrom = (filepath: string, to: string) =>
     this.bucket.upload(filepath, {
-      destination: path.join(this.saveFileName, to)
+      destination: path.join(this.pathname, to)
     })
 
   readFile = (name: string) =>
     this.bucket.file(path.join(this.pathname, name)).download()
-  writeFile = (name: string, data: string | Buffer | stream.Readable) => {
-    const filename = path.join(this.saveFileName, name)
+  writeFile = (name: string, data: string | Buffer) => {
+    const filename = path.join(this.pathname, name)
     return this.bucket
       .file(filename)
       .save(data, {
+        timeout: 100000,
+        resumable: false,
         gzip: true
       })
       .then(() => Promise.resolve(filename))

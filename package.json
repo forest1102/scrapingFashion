@@ -6,16 +6,15 @@
   "scripts": {
     "test": "ts-node ./src/test.ts",
     "run": "ts-node ./src/index.ts",
-    "start": "npm run build && node dist/index.js",
+    "start": "sudo nohup cpulimit -l 20 -- node --optimize_for_size --gc_interval=100 ./dist/agenda.js &",
     "pwd": "basename $1",
-    "build": "export NODE_OPTIONS=--max_old_space_size=2048 &&webpack",
-    "deploy": "npm run build && gcloud compute scp --recurse ./dist/ instance-1:~/scraping/",
+    "build": "export NODE_OPTIONS=--max_old_space_size=4096 &&webpack",
+    "deploy": "npm run build && gcloud compute scp --recurse ./dist instance-2:~/scraping/",
     "zip": "zip -r ../$(basename $(pwd)).zip . -x *\\node_modules\\* -x *\\img\\* -x *\\.DS_Store"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google-cloud/logging": "^9.0.2",
     "@google-cloud/storage": "^5.7.3",
     "@types/agenda": "^3.0.2",
     "@types/archiver": "^5.1.0",
@@ -27,7 +26,6 @@
     "@types/lodash": "^4.14.149",
     "@types/micromatch": "^4.0.1",
     "@types/node-schedule": "^1.3.1",
-    "@types/node-xlsx": "^0.12.1",
     "@types/request-promise": "^4.1.42",
     "@types/uuid": "^8.0.0",
     "@types/xlsx": "0.0.36",

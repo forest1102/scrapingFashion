@@ -1,11 +1,12 @@
 import { getElementObj } from '../../observable'
 import { from, of } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { map, tap } from 'rxjs/operators'
 
 import * as client from 'cheerio-httpcli'
 
 import { Scraper } from '../../scraperType'
 import List from '../../lists'
+import { fetchAndSaveCookies } from '../../fetch'
 import {
   findByWords,
   filterByWords,
@@ -23,14 +24,27 @@ export default class extends Scraper {
     super(isItaly, lists, argv)
     client.set('headers', { Cookie: this.Cookie.jp })
   }
-  beforeFetchPages = (url: string) => of(url)
+  beforeFetchPages = (url: string) =>
+    fetchAndSaveCookies({
+      url: 'https://www.ilduomo.it/login',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data:
+        'email=hedirockmode%40gmail.com&password=rock1226&back=&submitLogin=1'
+    }).pipe(
+      tap(() => {
+        console.log(client.headers)
+      })
+    )
 
   toItemPageUrlObservable = ($: CheerioStatic, url: string) =>
     from($('article.product-miniature').toArray()).pipe(
       // filter(el => !$('.stock.unavailable', el).length),
       map(el =>
         of({
-          url: $('a.thumbnail', el).first().attr('href'),
+          url: $('a.thumbnail', el)
+            .first()
+            .attr('href'),
           others: {}
         })
       )
@@ -95,7 +109,13 @@ export default class extends Scraper {
         ],
         size: [
           '#productLeft .product-variants option',
-          e => e.toArray().map(el => $(el).text().trim().replace(',', '.'))
+          e =>
+            e.toArray().map(el =>
+              $(el)
+                .text()
+                .trim()
+                .replace(',', '.')
+            )
         ],
         features: [
           '#productLeft .product-features li',

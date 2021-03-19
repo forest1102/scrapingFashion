@@ -39,9 +39,8 @@ import * as path from 'path'
 export const execScrape = (
   argv: string[],
   after: (count: number, saveTo: string, err?: Error) => Promise<any>,
-  onData?: (count: number) => void
+  onData?: (count: number) => Promise<any>
 ) => {
-  const formatter = 'YYYY-MM-DD HH mm'
   let count = 0
   let saveTo = ''
   try {
@@ -53,46 +52,16 @@ export const execScrape = (
     const scraperName = argv[2]
     const ScraperModule = require(`./${scraperName}`).default
     const DATA_PATH = argv[3]
-    saveTo = 'archive/' + DATA_PATH.replace(/\//g, '_') + ' '
-    moment().format(formatter)
-    let subsc: Subscription
-    let save = (err?: Error): Promise<any> => Promise.resolve()
+    const DATA_PREFIX =
+      DATA_PATH.replace(/\//g, '_') + ' ' + moment().format('YYYY-MM-DD HH mm')
     const isItaly = argv[4] === 'italy'
-    const storage = new CloudStorage(DATA_PATH, saveTo)
-    let _tmp$sigint_listener: NodeJS.SignalsListener
-    const sigintListeners = process.listeners('SIGINT')
-    for (const listener of sigintListeners) {
-      if (listener.name === '_tmp$sigint_listener') {
-        // this is the unique name of the listener function
-        _tmp$sigint_listener = listener // extract and save for later
-        process.removeListener('SIGINT', listener)
-        break
-      }
-    }
-    ;(['SIGINT', 'SIGTERM'] as NodeJS.Signals[]).forEach(sig => {
-      process.on(sig, () => {
-        console.log('interrupt ', sig)
-        subsc.unsubscribe()
-
-        save()
-          .then(name => {
-            console.log('Saved')
-            process.exit()
-          })
-          .catch(err => {
-            console.log('error while saving: ', err)
-            process.exit()
-          })
-        // process.exit()
-      })
-    })
-
-    const list = new List(storage)
+    const readFrom = new CloudStorage('scraping-datafiles', DATA_PATH)
+    saveTo = DATA_PREFIX
+    const writeTo = new CloudStorage('scraping-archives', DATA_PREFIX)
+    const list = new List(readFrom)
     list
       .loadFiles()
       .then(async () => {
-        const LINE_HEIGHT = 15
-
         const scraper: Scraper = new ScraperModule(
           isItaly,
           list,
@@ -104,27 +73,31 @@ export const execScrape = (
           data: 'data',
           output_data: '出品用data'
         })
-        const workbookMacro = await storage.readExcel('putupbuyma-0.60.xlsm', {
+        const workbookMacro = await readFrom.readExcel('putupbuyma-0.60.xlsm', {
           processed_data: '変換後',
           data: 'data',
           output_data: 'Sheet2'
         })
-        save = (err?: Error) => {
-          if (list.constants.フォルダ)
-            workbookMacro
-              .getCell('Sheet1', 'I2')
-              .value(path.win32.join(list.constants.フォルダ, saveTo))
-          return storage
-            .saveExcel(workbook, start.format(formatter) + ' data.xlsx')
-            .then(
-              () => new Promise((resolve, reject) => setTimeout(resolve, 100))
-            )
+        const saveExcels = () => {
+          return writeTo
+            .saveExcel(workbook, DATA_PREFIX + ' data.xlsx')
             .then(() =>
-              storage.saveExcel(
+              writeTo.saveExcel(
                 workbookMacro,
-                start.format(formatter) + 'putupbuyma-0.60.xlsm'
+                DATA_PREFIX + ' putupbuyma-0.60.xlsm'
               )
             )
+        }
+        const finish = (err?: Error) => {
+          const I2Cell = workbookMacro.getCell('Sheet1', 'I2')
+          I2Cell.value(
+            path.win32.join(
+              list.constants.フォルダ ?? I2Cell.value(),
+              saveTo,
+              'img'
+            )
+          )
+          return saveExcels()
             .then(() => after(count, saveTo, err).catch(e => console.log(e)))
             .catch(err => after(count, saveTo, err))
         }
@@ -139,7 +112,7 @@ export const execScrape = (
         const getNextCatch = makeRingItr(list.catchWords)
         const getNextMark = makeRingItr(list.marks)
         const getNextRegId = makeRegId(list.constants['管理番号'])
-        subsc = from(list.urls)
+        from(await list.getUrlsAsync())
           .pipe(
             concatMap(url =>
               scraper.beforeFetchPages(url).pipe(
@@ -149,8 +122,6 @@ export const execScrape = (
                 concatMap($ => scraper.toItemPageUrlObservable($, url)),
                 concatMap(obs =>
                   obs.pipe(
-                    toArray(),
-                    concatMap(arr => arr),
                     concatMap(data =>
                       typeof data === 'string'
                         ? RxFetch(urlPath.resolve(url, data)).pipe(
@@ -166,43 +137,89 @@ export const execScrape = (
                             }))
                           )
                         : EMPTY
+                    )
+                  )
+                ),
+                concatMap(({ $, others }, i) =>
+                  scraper.extractData($, { ...others, i }).pipe(
+                    map(data => ({
+                      ...data,
+                      update: moment().format('YYYY/M/D HH:mm:ss'),
+                      URL: $.documentInfo().url,
+                      brand_sex:
+                        `${data.brand}` + (data.gender === 'MEN' ? ' M' : '')
+                    }))
+                  )
+                ),
+                concatMap(({ image, ...others }) =>
+                  from(image).pipe(
+                    concatMap(img =>
+                      img
+                        ? writeTo.uploadImg(
+                            'img',
+                            urlPath.resolve(others.URL, img)
+                          )
+                        : EMPTY
                     ),
-                    concatMap(({ $, others }, i) =>
-                      scraper.extractData($, { ...others, i }).pipe(
-                        map(data => ({
-                          ...data,
-                          update: moment().format('YYYY/M/D HH:mm:ss'),
-                          URL: $.documentInfo().url,
-                          brand_sex:
-                            `${data.brand}` +
-                            (data.gender === 'MEN' ? ' M' : '')
-                        }))
-                      )
-                    ),
-                    concatMap(({ image, ...others }) =>
-                      from(image).pipe(
-                        concatMap(img =>
-                          img
-                            ? storage.uploadImg(
-                                'img',
-                                urlPath.resolve(others.URL, img)
-                              )
-                            : EMPTY
-                        ),
-                        reduce(
-                          (acc, val: string, i) => ({
-                            [`img${i + 1}`]: image[i],
-                            [`imgfile${i + 1}`]: val,
-                            ...acc
-                          }),
-                          others
-                        )
-                      )
+                    reduce(
+                      (acc, val: string, i) => ({
+                        [`img${i + 1}`]: image[i],
+                        [`imgfile${i + 1}`]: val,
+                        ...acc
+                      }),
+                      others
                     )
                   )
                 )
               )
             ),
+            concatMap(async obj => {
+              const priceMasterConverter = await list.priceMasterConverterAsync()
+              return {
+                ...obj,
+                ...(priceMasterConverter[obj.brand_sex] ||
+                  priceMasterConverter[''])
+              }
+            }),
+            concatMap(async obj => {
+              const _list = await list.getDataAsync()
+              return {
+                ...obj,
+                ...(_list.seasonConverter[obj.season] ||
+                  _list.seasonConverter['']),
+                ...(_list.categoryConverter[obj.category] || {
+                  big_category: '',
+                  small_category: obj.category_tree,
+                  tag: ''
+                }),
+
+                brand_pro: _list.brandConverter[obj.brand],
+                brand_name: getNextBrand(obj.brand_sex),
+                color_pro: obj.color.map(
+                  c =>
+                    _list.colorConverter
+                      .filter(p => !!p.before)
+                      .find(p => micromatch.isMatch(c, p.before))?.['before'] ||
+                    c
+                ),
+                brand_temp_pro:
+                  _list.brandTemplateConverter[obj.brand_sex] || '',
+                size_pro:
+                  obj.size_chart in _list.sizeConverter
+                    ? obj.size.map(
+                        s =>
+                          _list.sizeConverter[obj.size_chart][s] ||
+                          (s.lastIndexOf('/指定なし') === -1
+                            ? s + '/指定なし'
+                            : s)
+                      )
+                    : obj.size.map(s =>
+                        s.lastIndexOf('/指定なし') === -1 ? s + '/指定なし' : s
+                      ),
+                sup: _list.supConverter[obj.season],
+                title: replaceWords(obj.productName, _list.titleConverter)
+              }
+            }),
             map(obj => ({
               ...obj,
 
@@ -221,39 +238,6 @@ export const execScrape = (
                 obj.gender === 'MEN'
                   ? 'メンズファッション'
                   : 'レディースファッション',
-
-              ...(list.seasonConverter[obj.season] || list.seasonConverter['']),
-              ...(list.categoryConverter[obj.category] || {
-                big_category: '',
-                small_category: obj.category_tree,
-                tag: ''
-              }),
-              ...(list.priceMasterConverter[obj.brand_sex] ||
-                list.priceMasterConverter['']),
-
-              brand_pro: list.brandConverter[obj.brand],
-              brand_name: getNextBrand(obj.brand_sex),
-              color_pro: obj.color.map(
-                c =>
-                  list.colorConverter
-                    .filter(p => !!p.before)
-                    .find(p => micromatch.isMatch(c, p.before))?.['before'] || c
-              ),
-              brand_temp_pro: list.brandTemplateConverter[obj.brand_sex] || '',
-              size_pro:
-                obj.size_chart in list.sizeConverter
-                  ? obj.size.map(
-                      s =>
-                        list.sizeConverter[obj.size_chart][s] ||
-                        (s.lastIndexOf('/指定なし') === -1
-                          ? s + '/指定なし'
-                          : s)
-                    )
-                  : obj.size.map(s =>
-                      s.lastIndexOf('/指定なし') === -1 ? s + '/指定なし' : s
-                    ),
-              sup: list.supConverter[obj.season],
-              title: replaceWords(obj.productName, list.titleConverter),
 
               catch_word: getNextCatch.next().value,
               mark: getNextMark.next().value,
@@ -358,10 +342,7 @@ export const execScrape = (
               processed_data: list.headers,
               output_data: list.headers
             }),
-            tap(() => onData(count))
-          )
-          .subscribe(
-            v => {
+            concatMap(v => {
               const lastRow = workbook.appendRow(v)
               const lastRowMacro = workbookMacro.appendRow(v)
               ++count
@@ -379,18 +360,19 @@ export const execScrape = (
                 )
                 setBackground(lastRowMacro.output_data, ['CX', 'E'], 'FFFF00')
               }
-              if (count % 100 === 0)
-                storage
-                  .saveExcel(workbook, 'data.xlsx')
-                  .then(() =>
-                    storage.saveExcel(workbookMacro, 'putupbuyma-0.60.xlsm')
-                  )
-                  .then(() => console.log('Saved!'))
-                  .catch(err => console.log('error while saving: ', err))
-            },
+              return onData(count)
+            }),
+            concatMap(() =>
+              count % 200 === 0
+                ? saveExcels().then(() => 'Saved!')
+                : Promise.resolve('Next')
+            )
+          )
+          .subscribe(
+            null,
             e => {
               console.error(e)
-              save(e)
+              finish(e)
                 // spreadSheet
                 //   .end()
                 .then(() => console.log('Saved!'))
@@ -398,7 +380,7 @@ export const execScrape = (
             },
             () => {
               console.log('Finished!\n')
-              save()
+              finish()
                 // spreadSheet
                 //   .end()
                 .then(() => console.log('Saved!'))
@@ -409,19 +391,6 @@ export const execScrape = (
               )
             }
           )
-        // if (process.platform === 'win32') {
-        //   const rl = require('readline').createInterface({
-        //     input: process.stdin,
-        //     output: process.stdout
-        //   })
-
-        //   rl.on('SIGINT', function () {
-        //     //@ts-ignore
-        //     process.emit('SIGINT')
-        //   })
-        // }
-
-        // process.stdin.resume()
 
         console.log(client.headers)
       })

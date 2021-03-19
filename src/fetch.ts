@@ -9,6 +9,7 @@ import { retryWithDelay } from './operators'
 import * as https from 'https'
 import * as URLSearchParams from 'url-search-params'
 import * as cheerio from 'cheerio'
+import { merge } from 'lodash'
 
 export const httpsAgent = new https.Agent({
   keepAlive: false
@@ -24,7 +25,7 @@ export function RxFetch(
   url: string,
   params?: {},
   encoding: 'utf8' | 'sjis' = 'utf8',
-  retryWhenError = true
+  retryWhenError = false
 ) {
   if (!url) return EMPTY
   return from(
@@ -47,10 +48,9 @@ export function RxFetch(
     retryWhenError
       ? pipe(
           delay(500),
-          retryWithDelay(
-            2000,
-            3
-          ) as MonoTypeOperatorFunction<client.CheerioStaticEx>
+          retryWithDelay(2000, 3) as MonoTypeOperatorFunction<
+            client.CheerioStaticEx
+          >
         )
       : pipe()
   )
@@ -111,13 +111,17 @@ export const submitLoginForm = (
 export const fetchAndSaveCookies = (config: AxiosRequestConfig) => {
   const jar = new tough.CookieJar()
   return from(
-    axios({
-      ...config,
-      httpsAgent,
-      headers: { 'User-Agent': userAgent },
-      withCredentials: true,
-      jar
-    })
+    axios(
+      merge(
+        {
+          httpsAgent,
+          headers: { 'User-Agent': userAgent },
+          withCredentials: true,
+          jar
+        },
+        config
+      )
+    )
   ).pipe(
     map(() =>
       jar

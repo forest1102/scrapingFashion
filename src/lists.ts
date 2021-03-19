@@ -27,56 +27,18 @@ export default class List {
         ...options
       })
     )
-  categoryConverter: {
-    [key: string]: {
-      big_category: string
-      small_category: string
-      tag: string
-    }
-  }
   brandNameConverter: {
     [key: string]: string[]
   }
-  brandConverter: {
-    [key: string]: string
-  }
   colorConverter: { before: string; after: string }[]
-  titleConverter: {
-    [key: string]: string
-  }
-  brandTemplateConverter: {
-    [key: string]: string
-  }
-  sizeConverter: {
-    [size_chart: string]: {
-      [before: string]: string
-    }
-  }
   marks: string[]
-  supConverter: {
-    [key: string]: string
-  }
   catchWords: string[]
-  priceMasterConverter: {
-    [key: string]: {
-      price_pro_formula: string
-      price_ref_formula: string
-      duty: string
-      price_target_formula: string
-      discount: number
-      set_val: number
-      postage: number
-      exchange_rate: number
-    }
-  }
-  seasonConverter: { [key: string]: { 'season 1': string; 'season 2': string } }
   headers: string[]
   categories: string[]
   colors: string[]
   colorMap: { [key: string]: boolean }
   shoes: string[]
   AHsize: { [key: string]: { 'shoes': string; 'not shoes': string } }
-  urls: string[]
   constants: {
     '発送手段': string
     '購入期限': string
@@ -92,112 +54,8 @@ export default class List {
     'フォルダ': string
   }
 
-  async loadFiles() {
-    this.categoryConverter = _.reduce(
-      await this.parseCSVFromFile('mapping_table/category_converter.csv', {
-        columns: true
-      }),
-      (acc, { before, ...others }) => ({
-        ...acc,
-        [before]: others
-      }),
-      {}
-    )
-    this.brandNameConverter = _.reduce(
-      await this.parseCSVFromFile('mapping_table/brand_name_converter.csv', {
-        columns: true
-      }),
-      (acc, { before, after }) => ({
-        ...acc,
-        [before]: acc[before] ? [...acc[before], after] : [after]
-      }),
-      {}
-    )
-
-    this.brandConverter = _.reduce(
-      (await this.parseCSVFromFile('mapping_table/brand_converter.csv', {
-        columns: true
-      })) as { before: string; after: string }[],
-      (acc, { before, after }) => ({
-        ...acc,
-        [before]: after
-      }),
-      {}
-    )
-
-    this.colorConverter = await this.parseCSVFromFile(
-      'mapping_table/color_converter.csv',
-      {
-        columns: true,
-        cast: (v, context) => (context.column === 'before' ? _.upperCase(v) : v)
-      }
-    )
-
-    this.titleConverter = _.reduce(
-      (await this.parseCSVFromFile('mapping_table/title_converter.csv', {
-        columns: true
-      })) as { before: string; after: string }[],
-      (acc, { before, after }) => ({
-        ...acc,
-        [before]: after
-      }),
-      {} as { [key: string]: string }
-    )
-
-    this.brandTemplateConverter = _.reduce(
-      (await this.parseCSVFromFile(
-        'mapping_table/brand_template_converter.csv',
-        {
-          columns: true
-        }
-      )) as { before: string; after: string }[],
-      (acc, { before, after }) => ({
-        ...acc,
-        [before]: after
-      }),
-      {} as { [key: string]: string }
-    )
-
-    this.sizeConverter = _.reduce(
-      (await this.parseCSVFromFile(
-        'mapping_table/size_template_converter.csv',
-        {
-          columns: true
-        }
-      )) as { size_chart: string; before: string; after: string }[],
-      (acc, { size_chart, before, after }) =>
-        _.mergeWith(acc, { [size_chart]: { [before]: after } }, (a, b) =>
-          _.isObject(a) ? { ...a, ...b } : undefined
-        ),
-      {} as { [size_chart: string]: { [before: string]: string } }
-    )
-
-    this.supConverter = _.reduce(
-      (await this.parseCSVFromFile('mapping_table/supplement_converter.csv', {
-        columns: true
-      })) as { keyword: string; supplementation: string }[],
-      (acc, { keyword, supplementation }) => ({
-        ...acc,
-        [keyword]: supplementation
-      }),
-      {} as { [key: string]: string }
-    )
-
-    this.catchWords = _.map(
-      (await this.parseCSVFromFile('mapping_table/catch_word.csv', {
-        columns: true
-      })) as { catch_word: string }[],
-      ({ catch_word }) => catch_word
-    )
-
-    this.marks = _.map(
-      (await this.parseCSVFromFile('mapping_table/mark.csv', {
-        columns: true
-      })) as { catch_word: string; [key: string]: string }[],
-      ({ mark }) => mark
-    )
-
-    this.priceMasterConverter = _.reduce(
+  priceMasterConverterAsync = async () =>
+    _.reduce(
       (await this.parseCSVFromFile('mapping_table/price_master_converter.csv', {
         columns: true,
         cast: true
@@ -229,8 +87,81 @@ export default class List {
         }
       }
     )
+  getUrlsAsync = async () =>
+    JSON.parse(
+      (await this.storage.readFile('urls.json'))[0].toString()
+    ) as string[]
 
-    this.seasonConverter = _.reduce(
+  getConstantsAsync = async () =>
+    JSON.parse((await this.storage.readFile('constants.json'))[0].toString())
+  getDataAsync = async () => ({
+    categoryConverter: _.reduce(
+      await this.parseCSVFromFile('mapping_table/category_converter.csv', {
+        columns: true
+      }),
+      (acc, { before, ...others }) => ({
+        ...acc,
+        [before]: others
+      }),
+      {}
+    ),
+    brandConverter: _.reduce(
+      (await this.parseCSVFromFile('mapping_table/brand_converter.csv', {
+        columns: true
+      })) as { before: string; after: string }[],
+      (acc, { before, after }) => ({
+        ...acc,
+        [before]: after
+      }),
+      {}
+    ),
+    titleConverter: _.reduce(
+      (await this.parseCSVFromFile('mapping_table/title_converter.csv', {
+        columns: true
+      })) as { before: string; after: string }[],
+      (acc, { before, after }) => ({
+        ...acc,
+        [before]: after
+      }),
+      {} as { [key: string]: string }
+    ),
+    brandTemplateConverter: _.reduce(
+      (await this.parseCSVFromFile(
+        'mapping_table/brand_template_converter.csv',
+        {
+          columns: true
+        }
+      )) as { before: string; after: string }[],
+      (acc, { before, after }) => ({
+        ...acc,
+        [before]: after
+      }),
+      {} as { [key: string]: string }
+    ),
+    sizeConverter: _.reduce(
+      (await this.parseCSVFromFile(
+        'mapping_table/size_template_converter.csv',
+        {
+          columns: true
+        }
+      )) as { size_chart: string; before: string; after: string }[],
+      (acc, { size_chart, before, after }) =>
+        _.mergeWith(acc, { [size_chart]: { [before]: after } }, (a, b) =>
+          _.isObject(a) ? { ...a, ...b } : undefined
+        ),
+      {} as { [size_chart: string]: { [before: string]: string } }
+    ),
+    supConverter: _.reduce(
+      (await this.parseCSVFromFile('mapping_table/supplement_converter.csv', {
+        columns: true
+      })) as { keyword: string; supplementation: string }[],
+      (acc, { keyword, supplementation }) => ({
+        ...acc,
+        [keyword]: supplementation
+      }),
+      {} as { [key: string]: string }
+    ),
+    seasonConverter: _.reduce(
       (await this.parseCSVFromFile('mapping_table/season_converter.csv', {
         columns: true
       })) as { 'keyword': string; 'season 1': string; 'season 2': string }[],
@@ -244,6 +175,39 @@ export default class List {
           'season 2': ''
         }
       }
+    ),
+    colorConverter: await this.parseCSVFromFile(
+      'mapping_table/color_converter.csv',
+      {
+        columns: true,
+        cast: (v, context) => (context.column === 'before' ? _.upperCase(v) : v)
+      }
+    )
+  })
+  async loadFiles() {
+    this.brandNameConverter = _.reduce(
+      await this.parseCSVFromFile('mapping_table/brand_name_converter.csv', {
+        columns: true
+      }),
+      (acc, { before, after }) => ({
+        ...acc,
+        [before]: acc[before] ? [...acc[before], after] : [after]
+      }),
+      {}
+    )
+
+    this.catchWords = _.map(
+      (await this.parseCSVFromFile('mapping_table/catch_word.csv', {
+        columns: true
+      })) as { catch_word: string }[],
+      ({ catch_word }) => catch_word
+    )
+
+    this.marks = _.map(
+      (await this.parseCSVFromFile('mapping_table/mark.csv', {
+        columns: true
+      })) as { catch_word: string; [key: string]: string }[],
+      ({ mark }) => mark
     )
 
     this.headers = _.flatten(
@@ -280,10 +244,6 @@ export default class List {
         'shoes': string
       }[],
       'Brand'
-    )
-
-    this.urls = JSON.parse(
-      (await this.storage.readFile('urls.json'))[0].toString()
     )
 
     this.constants = JSON.parse(
@@ -335,7 +295,7 @@ export default class List {
     94: 'productName'
   })
 
-  static readonly toProcessedIndex: { [key: number]: string } = Object.freeze({
+  static readonly toProcessedIndex = Object.freeze({
     ...List.toArrIndex,
     1: 'big_category',
     2: 'small_category',

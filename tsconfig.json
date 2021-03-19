@@ -7,9 +7,7 @@
     "sourceMap": true,
     "target": "es6",
     "skipLibCheck": true,
-    "noErrorTruncation":false
-	},
-  "include": [
-    "src"
-  ]
+    "noErrorTruncation": false
+  },
+  "include": ["src"]
 }
