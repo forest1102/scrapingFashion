@@ -15,12 +15,8 @@ export const httpsAgent = new https.Agent({
   keepAlive: false
 })
 export const userAgent =
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36'
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:62.0) Gecko/20100101 Firefox/62.0'
 client.set('headers', { 'Accept-Language': 'ja,en-US' })
-client.set('headers', {
-  'Connection': 'Keep-Alive',
-  'Keep-Alive': 'timeout=600;max=100'
-})
 export function RxFetch(
   url: string,
   params?: {},
@@ -48,7 +44,7 @@ export function RxFetch(
     retryWhenError
       ? pipe(
           delay(500),
-          retryWithDelay(2000, 3) as MonoTypeOperatorFunction<
+          retryWithDelay(2000, 1) as MonoTypeOperatorFunction<
             client.CheerioStaticEx
           >
         )

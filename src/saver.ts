@@ -6,7 +6,7 @@ import {
   Storage
 } from '@google-cloud/storage'
 import { v5 as uuidv5 } from 'uuid'
-import { from, MonoTypeOperatorFunction, EMPTY } from 'rxjs'
+import { from, MonoTypeOperatorFunction, EMPTY, of, throwError } from 'rxjs'
 import {
   retry,
   map,
@@ -26,7 +26,8 @@ import { OAuth2Client, JWT } from 'google-auth-library'
 import * as moment from 'moment'
 import * as fs from 'fs-extra'
 import * as archiver from 'archiver'
-import * as stream from 'stream'
+import { concatMap, mapTo } from 'rxjs/operators'
+import * as mime from 'mime-types'
 type RawRow<T> =
   | { [P in keyof T]: (string | number | { formula: string })[] }
   | {}
@@ -163,8 +164,8 @@ export class Workbook<SheetNames extends { [key: string]: string }> {
       const row = this.worksheets[key].row(this.rowCount)
       for (const i in data) {
         const v = data[i]
-        if (_.isNil(v)) {
-          continue
+        if (v === null || v === undefined) {
+          row.cell(+i + 1).value('')
         } else if (v instanceof Object) {
           if (v.f)
             row.cell(+i + 1).formula(v.f[0] === '=' ? v.f.substr(1) : v.f)
@@ -240,6 +241,7 @@ export class CloudStorage {
       destination: path.join(this.pathname, to)
     })
 
+  getFile = (name: string) => this.bucket.file(name)
   readFile = (name: string) =>
     this.bucket.file(path.join(this.pathname, name)).download()
   writeFile = (name: string, data: string | Buffer) => {
@@ -247,8 +249,6 @@ export class CloudStorage {
     return this.bucket
       .file(filename)
       .save(data, {
-        timeout: 100000,
-        resumable: false,
         gzip: true
       })
       .then(() => Promise.resolve(filename))
@@ -275,28 +275,31 @@ export class CloudStorage {
       axios.get(url, {
         responseType: 'arraybuffer',
         httpsAgent,
-        headers: { 'user-agent': userAgent, 'Content-Encoding': 'gzip' }
+        headers: { 'user-agent': userAgent }
       })
     ).pipe(
       tap(res => {
         console.log(url)
       }),
-      retryWithDelay(2000, 3) as MonoTypeOperatorFunction<AxiosResponse<any>>,
-      filter(res => !!res.data),
       map(res => Buffer.from(res.data)),
-      mergeMap(buf => Jimp.read(buf).catch(() => null)),
-      filter(image => image !== undefined),
-      map((image: any) => image.autocrop()),
-      mergeMap(image =>
-        from(image.getBufferAsync(`image/${image.getExtension()}`)).pipe(
-          mergeMap((buf: Buffer) =>
-            this.writeFile(
-              path.join(folder, uuid + '.' + image.getExtension()),
-              buf
-            ).then(() => uuid + '.' + image.getExtension())
-          )
-        )
-      )
+      concatMap(buf => Jimp.read(buf)),
+      filter(image => !!image),
+      map(image => image.autocrop()),
+      concatMap(image => {
+        const type = mime.lookup(url)
+
+        return type
+          ? from(image.getBufferAsync(type)).pipe(
+              concatMap((buf: Buffer) =>
+                this.writeFile(
+                  path.join(folder, uuid + '.' + image.getExtension()),
+                  buf
+                )
+              ),
+              mapTo(uuid + '.' + image.getExtension())
+            )
+          : throwError('invalid type')
+      })
     )
   }
 }

@@ -85,6 +85,17 @@ export default class List {
           postage: 0,
           exchange_rate: 0
         }
+      } as {
+        [brand: string]: {
+          price_pro_formula: string
+          price_ref_formula: string
+          duty: string
+          price_target_formula: string
+          discount: number
+          set_val: number
+          postage: number
+          exchange_rate: number
+        }
       }
     )
   getUrlsAsync = async () =>
@@ -93,8 +104,23 @@ export default class List {
     ) as string[]
 
   getConstantsAsync = async () =>
-    JSON.parse((await this.storage.readFile('constants.json'))[0].toString())
-  getDataAsync = async () => ({
+    JSON.parse(
+      (await this.storage.readFile('constants.json'))[0].toString()
+    ) as {
+      '発送手段': string
+      '購入期限': string
+      '買付地': string
+      '発送地': string
+      '出品': string
+      'テーマ': string
+      '数量': string
+      '管理番号': string
+      '※購入者の支払方法': string
+      '買付先ショップ名': string
+      '関税': string
+      'フォルダ': string
+    }
+  getConverter = async () => ({
     categoryConverter: _.reduce(
       await this.parseCSVFromFile('mapping_table/category_converter.csv', {
         columns: true
@@ -103,7 +129,13 @@ export default class List {
         ...acc,
         [before]: others
       }),
-      {}
+      {} as {
+        [before: string]: {
+          big_category: string
+          small_category: string
+          tag: string
+        }
+      }
     ),
     brandConverter: _.reduce(
       (await this.parseCSVFromFile('mapping_table/brand_converter.csv', {
@@ -113,7 +145,7 @@ export default class List {
         ...acc,
         [before]: after
       }),
-      {}
+      {} as { [before: string]: string }
     ),
     titleConverter: _.reduce(
       (await this.parseCSVFromFile('mapping_table/title_converter.csv', {
@@ -174,15 +206,20 @@ export default class List {
           'season 1': '',
           'season 2': ''
         }
+      } as {
+        [keyword: string]: {
+          'season 1': string
+          'season 2': string
+        }
       }
     ),
-    colorConverter: await this.parseCSVFromFile(
+    colorConverter: (await this.parseCSVFromFile(
       'mapping_table/color_converter.csv',
       {
         columns: true,
         cast: (v, context) => (context.column === 'before' ? _.upperCase(v) : v)
       }
-    )
+    )) as [{ before: string; after: string }]
   })
   async loadFiles() {
     this.brandNameConverter = _.reduce(
@@ -191,7 +228,7 @@ export default class List {
       }),
       (acc, { before, after }) => ({
         ...acc,
-        [before]: acc[before] ? [...acc[before], after] : [after]
+        [before.trim()]: acc[before] ? [...acc[before], after] : [after]
       }),
       {}
     )
@@ -228,7 +265,7 @@ export default class List {
     )
       .flatten()
       .reduce(
-        (acc, cur) => ({ ...acc, [_.upperCase(cur)]: true }),
+        (acc, cur) => ({ ...acc, [_.upperCase(cur).trim()]: true }),
         {} as { [key: string]: true }
       )
       .value()
@@ -338,8 +375,6 @@ export default class List {
   static readonly toOutputIndex = Object.freeze({
     ...List.toProcessedIndex,
     0: 'gender',
-    4: 'title_pro_val',
-    13: 'comment_val',
-    101: 'word_count_val'
+    13: 'comment_val'
   })
 }

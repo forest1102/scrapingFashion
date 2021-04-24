@@ -26,7 +26,7 @@ async function init() {
       scheduler.scheduleJob(
         name,
         rule,
-        function (argv: string[], rowIdx: number) {
+        function(argv: string[], rowIdx: number) {
           console.log('schedule-' + rowIdx + ' start with: ' + argv.join(' '))
           spreadsheet
             .updateCell('I' + rowIdx, [
@@ -34,11 +34,7 @@ async function init() {
             ])
             .then(() => {
               console.log('started', argv)
-              execScrape(argv, (count, err) => {
-                return spreadsheet.updateCell('J' + rowIdx, [
-                  [moment().format('YYYY/MM/DD HH:mm:ss'), count, err || '']
-                ])
-              })
+              return execScrape(argv)
             })
             .catch(err => {
               return spreadsheet.updateCell('J' + rowIdx, [

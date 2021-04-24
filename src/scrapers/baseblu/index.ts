@@ -32,7 +32,13 @@ export default class extends Scraper {
               .first()
               .children('li')
               .toArray()
-              .map(el => $(el).text().trim().toUpperCase().split(' '))
+              .map(el =>
+                $(el)
+                  .text()
+                  ?.trim()
+                  ?.toUpperCase()
+                  .split(' ')
+              )
 
             const indexOfSale = textLi.findIndex(
               strArr => strArr.indexOf('Sale') !== -1
@@ -78,7 +84,12 @@ export default class extends Scraper {
         ],
         productName: [
           '.product-name',
-          e => e.first().text().trim().replace(/`|'/g, '')
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .replace(/`|'/g, '')
         ],
         // script: [
         //   '.data-sheet li:nth-child(1)',
@@ -111,7 +122,12 @@ export default class extends Scraper {
         ],
         description: [
           '.product-features',
-          e => e.first().text().trim().toLowerCase()
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .toLowerCase()
         ],
         image: [
           '.images-container img.thumb',

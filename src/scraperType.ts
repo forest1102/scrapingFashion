@@ -30,8 +30,8 @@ export abstract class Scraper {
     category_tree?: string
     brand: string
     productName: string
-    price: string
-    old_price: string
+    price: string | { f: string }
+    old_price: string | { f: string }
     size: string[]
     sku: string
     description: string
@@ -44,6 +44,7 @@ export abstract class Scraper {
     size_chart: string
     size_info: string
     euro_price?: string | number
+    show_discount?: boolean
   }>
 
   getAllPages = (url: string) => getAllPagesRx(url, this.NEXT_SELECTOR)

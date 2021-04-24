@@ -28,7 +28,9 @@ export default class extends Scraper {
     fetchAndSaveCookies({
       url: 'https://www.ilduomo.it/login',
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
       data:
         'email=hedirockmode%40gmail.com&password=rock1226&back=&submitLogin=1'
     }).pipe(
@@ -97,7 +99,7 @@ export default class extends Scraper {
             e
               .first()
               .text()
-              .replace(/,|\s|¥|€/g, '')
+              .replace(/[,\s¥€$]/g, '')
         ],
         old_price: [
           '#productLeft .regular-price',
@@ -105,7 +107,7 @@ export default class extends Scraper {
             e
               .first()
               .text()
-              .replace(/[,\s¥€]/g, '')
+              .replace(/[,\s¥€$]/g, '')
         ],
         size: [
           '#productLeft .product-variants option',
@@ -146,6 +148,10 @@ export default class extends Scraper {
               .toArray()
               ?.map(el => ($(el).text() || '').replace(/^\s*_|\s*$/, ''))
               .slice(1, -1)
+        ],
+        discount_percent: [
+          '.discount-percentage',
+          e => e.text()?.match(/\d+%/)?.[0] || ''
         ]
         // color: [
         //   '#main .color-value',
@@ -163,6 +169,12 @@ export default class extends Scraper {
       })),
       map(obj => ({
         ...obj,
+        old_price: this.lists.constants['レート']
+          ? { f: obj.old_price + '/' + this.lists.constants['レート'] }
+          : obj.old_price,
+        price: this.lists.constants['レート']
+          ? { f: obj.price + '/' + this.lists.constants['レート'] }
+          : obj.price,
         brand_sex: obj.brand + (obj.gender === 'MEN' ? ' M' : ''),
         size: thru(
           obj.size
@@ -260,6 +272,7 @@ export default class extends Scraper {
       }),
       map(obj => ({
         ...obj,
+        country: obj.discount_percent,
         size_chart:
           thru(
             thru(

@@ -38,7 +38,11 @@ export default class Tiziana extends Scraper {
       RxFetch(
         'https://www.tizianafausti.com/r1_en/customer/account/index/'
       ).pipe(
-        map($ => $('.box-content').first().text()),
+        map($ =>
+          $('.box-content')
+            .first()
+            .text()
+        ),
         tap(info => console.log(info ? 'Success Login' : 'Failed Login'))
       )
 
@@ -58,7 +62,9 @@ export default class Tiziana extends Scraper {
       filter(el => !$('.stock.unavailable', el).length),
       map(el =>
         of({
-          url: $('a', el).first().attr('href'),
+          url: $('a', el)
+            .first()
+            .attr('href'),
           others: { gender: /-man$/.test(url) ? 'MEN' : 'WOMEN' }
         })
       )
@@ -131,7 +137,11 @@ export default class Tiziana extends Scraper {
                       str => str && !str.includes('Out of Stock')
                     )
                   )
-                  .map(el => $('.attr-label', el).text().trim())
+                  .map(el =>
+                    $('.attr-label', el)
+                      .text()
+                      .trim()
+                  )
             ]
           : [
               '.product-options-wrapper [type="text/x-magento-init"]',

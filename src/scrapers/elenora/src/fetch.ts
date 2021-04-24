@@ -53,7 +53,7 @@ export function uploadImg(url: string, isURL = true) {
 
   return from(axios.get(url, { responseType: 'arraybuffer' })).pipe(
     tap(v => console.log(v.config.url)),
-    flatMap(res => fs.outputFile(fileName, new Buffer(res.data), 'binary')),
+    flatMap(res => fs.outputFile(fileName, Buffer.from(res.data), 'binary')),
     map(() => uuid + extension),
     retryWithRandomDelay(3000, 10000, 20)
   )

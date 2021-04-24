@@ -26,6 +26,7 @@ import {
 } from '../../util'
 import * as _ from 'lodash'
 import { Scraper } from '../../scraperType'
+import { flatten } from 'lodash'
 
 console.log(client.headers)
 
@@ -79,7 +80,12 @@ export default class extends Scraper {
       getElementObj($, {
         category_tree: [
           '.breadcrumbs a,.breadcrumbs strong',
-          e => e.toArray().map(el => $(el).text().trim())
+          e =>
+            e.toArray().map(el =>
+              $(el)
+                .text()
+                .trim()
+            )
         ],
         brand: [
           '[itemprop="brand"]',
@@ -100,7 +106,7 @@ export default class extends Scraper {
               .replace(/[ÿ]/g, 'y')
               .replace(/[Ÿ]/g, 'Y')
               .split(' ')
-              .map(word => word[0].toUpperCase() + word.slice(1))
+              .map(word => word?.[0]?.toUpperCase() + word.slice(1) || '')
               .join(' ')
         ],
         productName: [
@@ -170,18 +176,31 @@ export default class extends Scraper {
         ],
         color: [
           'div[itemprop="colore"]',
-          e => (e.first().text() || '').trim().toUpperCase().split('/')
+          e =>
+            (e.first().text() || '')
+              .trim()
+              .toUpperCase()
+              .split('/')
         ],
         image: [
           '.product.media script[type="text/x-magento-init"]',
           e =>
-            (_.chain(JSON.parse(e.first().text()) as { [key: string]: {} })
-              .get(
-                '["[data-gallery-role=gallery-placeholder]"]["mage/gallery/gallery"][data]'
-              )
-              .map('full')
+            flatten(
+              e
+                .toArray()
+                .map(el => $(el).text())
+                .map(
+                  data =>
+                    (JSON.parse(data)?.[
+                      '[data-gallery-role=gallery-placeholder]'
+                    ]?.['mage/gallery/gallery']?.data || []) as {
+                      full: string
+                      img: string
+                    }[]
+                )
+            )
+              .map(data => data.full || data.img)
               .filter(v => !!v)
-              .value() || []) as string[]
         ]
         // currency:[
         //   'span[itemprop="priceCurrency"]',
@@ -260,7 +279,8 @@ export default class extends Scraper {
             result.push(m[0].trim())
           }
           return result.join('\r\n')
-        })()
+        })(),
+        show_discount: true
       }))
     )
 }

@@ -1,16 +1,6 @@
-import { getElementObj, getAllPagesRx } from '../../observable'
+import { getElementObj } from '../../observable'
 import { from, of } from 'rxjs'
-import {
-  map,
-  tap,
-  concatMap,
-  retry,
-  reduce,
-  startWith,
-  flatMap,
-  filter,
-  bufferCount
-} from 'rxjs/operators'
+import { map, filter } from 'rxjs/operators'
 
 import {
   commaToDot,
@@ -35,7 +25,9 @@ export default class extends Scraper {
       filter(el => !/sold out/i.test($(el).text())),
       map(el =>
         of({
-          url: $('a.product-image', el).first().attr('href'),
+          url: $('a.product-image', el)
+            .first()
+            .attr('href'),
           others: {}
         })
       )
@@ -110,7 +102,11 @@ export default class extends Scraper {
         ],
         size_chart: [
           '.size-selector span.color-gray',
-          e => e.first().text().toUpperCase()
+          e =>
+            e
+              .first()
+              .text()
+              .toUpperCase()
         ],
         // sku: [
         //   '[itemprop="name"]',
@@ -118,8 +114,12 @@ export default class extends Scraper {
         // ],
         description: ['.description', e => getSurfaceText(e).trim() || ''],
         image: [
-          '.item .product-image',
-          e => e.toArray().map(el => el.attribs['href'] || '')
+          '.item a',
+          e =>
+            e
+              .toArray()
+              .map(el => el.attribs['href'])
+              .filter(href => href)
         ],
         country: [
           '#details-section',
@@ -141,7 +141,11 @@ export default class extends Scraper {
           currency: '€',
           fit: '指定なし',
           gender,
-          size_info: ''
+          size_info: '',
+          season: elem.image?.[0].match(/(?<=\/)\w+(?=-{3})/)?.[0] || '',
+          sku:
+            elem.image?.[0].match(/(?<=-{3})\w+?(?=(-\w+)?(_\d_\w)?\.)/)?.[0] ||
+            ''
         }
       }),
       map(({ size_chart, ...others }) => {
@@ -155,12 +159,7 @@ export default class extends Scraper {
           size_chart,
           ...others
         }
-      }),
-      map(obj => ({
-        ...obj,
-        season: _.nth(obj.image[0].match(/(?<=\/)\w+(?=-{3})/), 0),
-        sku: _.nth(obj.image[0].match(/(?<=-{3})\w+?(?=(-\w+)?(_\d_\w)?\.)/), 0)
-      }))
+      })
     )
   }
 }
