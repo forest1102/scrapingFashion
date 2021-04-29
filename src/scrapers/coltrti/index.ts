@@ -13,7 +13,6 @@ import {
   filter,
   mapTo
 } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import {
   addBaseURL,
@@ -27,14 +26,14 @@ import {
 import * as _ from 'lodash'
 import { Scraper } from '../../scraperType'
 import { flatten } from 'lodash'
-
-console.log(client.headers)
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
 export default class extends Scraper {
   BASE_URL = 'https://www.styleisnow.com'
   NEXT_SELECTOR = 'a.action.next'
   beforeFetchPages = (url: string) => {
     return RxFetch(
+      this.client,
       'https://www.styleisnow.com/business/customer/account/login/'
     ).pipe(
       map($ => $('#login-form > input[name="form_key"]').attr('value')),
@@ -51,14 +50,14 @@ export default class extends Scraper {
         )
       ),
       tap(cookie => {
-        client.set('headers', {
+        this.client.set('headers', {
           Cookie: updateCookie(cookie, 'form_key', undefined)
         })
       }),
       mapTo(url)
     )
   }
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) =>
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) =>
     from($('.products-grid .item').toArray()).pipe(
       filter(el => !/sold out/i.test($(el).text())),
       map(el =>
@@ -73,7 +72,7 @@ export default class extends Scraper {
       )
     )
   extractData = (
-    $: client.CheerioStaticEx,
+    $: CheerioStaticEx,
     { discount_percent }: { [key: string]: string }
   ) =>
     of(
@@ -130,7 +129,7 @@ export default class extends Scraper {
               .replace(/[ÿ]/g, 'y')
               .replace(/[Ÿ]/g, 'Y')
         ],
-        sku: ['[itemprop="sku"]', e => e.first().text()],
+        sku: ['[itemprop="sku"]', e => e.text()],
         price: ['[itemprop="price"]', e => e.attr('content')],
 
         old_price: [

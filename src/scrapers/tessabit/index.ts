@@ -1,6 +1,6 @@
 import { getElementObj } from '../../observable'
 import { from, of } from 'rxjs'
-import { map, filter } from 'rxjs/operators'
+import { map, filter, delay, tap } from 'rxjs/operators'
 
 import {
   commaToDot,
@@ -10,15 +10,23 @@ import {
   sizeCompare
 } from '../../util'
 
-import { CheerioStaticEx } from 'cheerio-httpcli'
 import * as _ from 'lodash'
 import { Scraper } from '../../scraperType'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
 export default class extends Scraper {
   BASE_URL = 'https://www.tessabit.com/'
   NEXT_SELECTOR = 'a.next_jump'
 
-  beforeFetchPages = (url: string) => of(url)
+  beforeFetchPages = (url: string) =>
+    of(url).pipe(
+      tap(() =>
+        this.client.set('headers', {
+          'connection': 'Keep-Alive',
+          'keep-alive': 'timeout=600;max=100'
+        })
+      )
+    )
 
   toItemPageUrlObservable = ($: CheerioStatic) =>
     from($('.product-box.item').toArray()).pipe(

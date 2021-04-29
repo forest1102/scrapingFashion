@@ -12,10 +12,9 @@ import {
 } from 'rxjs/operators'
 import * as _ from 'lodash'
 
-import * as client from 'cheerio-httpcli'
-
 import { Scraper } from '../../scraperType'
 import List from '../../lists'
+import { ChildInstance, CheerioStaticEx } from 'cheerio-httpcli'
 import {
   findByWords,
   filterByWords,
@@ -32,26 +31,31 @@ export default class extends Scraper {
   BASE_URL = 'https://www.tizianafausti.com/en/'
   NEXT_SELECTOR = '.next'
 
-  constructor(isItaly: boolean, lists: List, argv: any[]) {
-    super(isItaly, lists, argv)
-    client.set('headers', { Cookie: this.Cookie.jp })
+  constructor(
+    lists: List,
+    client: ChildInstance,
+    isItaly: boolean,
+    argv: any[]
+  ) {
+    super(lists, client, isItaly, argv)
+    this.client.set('headers', { Cookie: this.Cookie.jp })
   }
 
   beforeFetchPages = (url: string) =>
-    RxFetch(url).pipe(
+    RxFetch(this.client, url).pipe(
       map($ => $('#valuta_EUR').val()),
       concatMap(post_url =>
-        fetchAndSaveCookies({
+        fetchAndSaveCookies(this.client, {
           url: post_url,
           method: 'POST'
         })
       ),
       tap(() =>
-        client.set('headers', {
-          Cookie: this.Cookie.jp + client.headers.cookie
+        this.client.set('headers', {
+          Cookie: this.Cookie.jp + this.client.headers.cookie
         })
       ),
-      tap(() => console.log(client.headers))
+      tap(() => console.log(this.client.headers))
     )
 
   toItemPageUrlObservable = ($: CheerioStatic, url: string) =>
@@ -59,16 +63,15 @@ export default class extends Scraper {
       filter(el => !$('.stock.unavailable', el).length),
       map(el =>
         of({
-          url: $('a.product-image', el).first().attr('href'),
+          url: $('a.product-image', el)
+            .first()
+            .attr('href'),
           others: {}
         })
       )
     )
 
-  extractData = (
-    $: client.CheerioStaticEx,
-    others: { [key: string]: string }
-  ) => {
+  extractData = ($: CheerioStaticEx, others: { [key: string]: string }) => {
     let unit = ''
     return of(
       getElementObj($, {
@@ -146,7 +149,11 @@ export default class extends Scraper {
                 value: $(el)
                   .find('li')
                   .toArray()
-                  .map(_el => $(_el).text().trim())
+                  .map(_el =>
+                    $(_el)
+                      .text()
+                      .trim()
+                  )
               }))
               .reduce(
                 (acc, cur) => ({ ...acc, [cur.key]: cur.value }),
@@ -203,7 +210,13 @@ export default class extends Scraper {
         ],
         color: [
           '#main .color-value',
-          e => e.toArray().map(el => $(el).text().trim().toUpperCase())
+          e =>
+            e.toArray().map(el =>
+              $(el)
+                .text()
+                .trim()
+                .toUpperCase()
+            )
         ]
       })
     ).pipe(
@@ -327,9 +340,9 @@ export default class extends Scraper {
       })),
       concatMap(obj => {
         if (!this.isItaly) return of(obj)
-        client.set('headers', {
+        this.client.set('headers', {
           Cookie: _.thru(
-            _.get(client, ['headers', 'cookie']),
+            _.get(this.client, ['headers', 'cookie']),
             cookieStr =>
               cookieStr &&
               (_.includes(cookieStr, this.Cookie.jp)
@@ -338,8 +351,14 @@ export default class extends Scraper {
           )
         })
 
-        return RxFetch($.documentInfo().url, {}, 'utf8', false).pipe(
-          catchError(err => of(err.$ as client.CheerioStaticEx)),
+        return RxFetch(
+          this.client,
+          $.documentInfo().url,
+          {},
+          'utf8',
+          false
+        ).pipe(
+          catchError(err => of(err.$ as CheerioStaticEx)),
           map($$ => ({
             ...obj,
             euro_price:
@@ -350,9 +369,9 @@ export default class extends Scraper {
                 .replace(/,|\s|¥|€/g, '')
           })),
           tap(() =>
-            client.set('headers', {
+            this.client.set('headers', {
               Cookie: _.thru(
-                _.get(client, ['headers', 'cookie']),
+                _.get(this.client, ['headers', 'cookie']),
                 cookieStr =>
                   cookieStr &&
                   (_.includes(cookieStr, this.Cookie.it)

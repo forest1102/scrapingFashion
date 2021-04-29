@@ -16,9 +16,9 @@ import {
   flatMap,
   filter,
   concatMapTo,
+  delay,
   catchError
 } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import {
   commaToDot,
@@ -30,6 +30,7 @@ import {
 import * as tough from 'tough-cookie'
 import axios from 'axios'
 import { Scraper } from '../../scraperType'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 export default class extends Scraper {
   BASE_URL = ''
 
@@ -40,10 +41,10 @@ export default class extends Scraper {
       new Promise((resolve, reject) => {
         jar.getCookieString(url, (err, cookieStr) => {
           if (!err) {
-            client.set('headers', {
+            this.client.set('headers', {
               Cookie: cookieStr
             })
-            console.log(client.headers)
+            console.log(this.client.headers)
             return resolve(cookieStr)
           }
           reject(err)
@@ -65,15 +66,45 @@ export default class extends Scraper {
   }
 
   getAllCatalogPages = (url: string) => {
-    return getAllPagesRx(url, this.NEXT_SELECTOR)
+    const jar = new tough.CookieJar()
+    const saveCookies = () =>
+      new Promise((resolve, reject) => {
+        jar.getCookieString(url, (err, cookieStr) => {
+          if (!err) {
+            this.client.set('headers', {
+              Cookie: cookieStr
+            })
+            console.log(this.client.headers)
+            return resolve(cookieStr)
+          }
+          reject(err)
+        })
+      })
+
+    return getAllPagesRx(this.client, url, this.NEXT_SELECTOR).pipe(
+      catchError(() =>
+        from(
+          axios
+            .get(url, {
+              jar,
+              withCredentials: true,
+              headers: { 'User-Agent': userAgent },
+              httpsAgent: httpsAgent
+            })
+            .catch(() => saveCookies())
+        ).pipe(concatMapTo(getAllPagesRx(this.client, url, this.NEXT_SELECTOR)))
+      )
+    )
   }
 
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) => {
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) => {
     return from($('.product-item').toArray()).pipe(
       filter(el => !/sold out/i.test($('.product-price', el).text())),
       map(el =>
         of({
-          url: $('a.product-item-photo', el).first().attr('href'),
+          url: $('a.product-item-photo', el)
+            .first()
+            .attr('href'),
           others: {
             gender: /\/women\//.test(
               $.documentInfo().url.replace('donna', 'women')
@@ -81,12 +112,12 @@ export default class extends Scraper {
               ? 'WOMEN'
               : 'MEN'
           }
-        })
+        }).pipe(delay(2000))
       )
     )
   }
 
-  extractData = ($: client.CheerioStaticEx, { gender }: { gender: string }) =>
+  extractData = ($: CheerioStaticEx, { gender }: { gender: string }) =>
     of(
       getElementObj($, {
         brand: [
@@ -134,7 +165,14 @@ export default class extends Scraper {
               .replace(/[ÿ]/g, 'y')
               .replace(/[Ÿ]/g, 'Y')
         ],
-        sku: ['.product-code', e => e.first().text().trim()],
+        sku: [
+          '.product-code',
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+        ],
         price: [
           '.product-detail [data-price-type="finalPrice"]',
           e => e.first().attr('data-price-amount')
@@ -168,7 +206,11 @@ export default class extends Scraper {
           e =>
             e
               .toArray()
-              .map(el => $(el).text().trim())
+              .map(el =>
+                $(el)
+                  .text()
+                  .trim()
+              )
               .join('\r\n')
         ],
         image: [
@@ -182,7 +224,12 @@ export default class extends Scraper {
           'h1.page-title  p.title',
           e =>
             this.lists.colors.filter(
-              c => e.first().text().toLowerCase().indexOf(c) !== -1
+              c =>
+                e
+                  .first()
+                  .text()
+                  .toLowerCase()
+                  .indexOf(c) !== -1
             )
         ],
         season: ['td[data-th="Season"]', e => e.first().text()],

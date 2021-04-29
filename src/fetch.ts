@@ -1,4 +1,3 @@
-import * as client from 'cheerio-httpcli'
 import { EMPTY, from, MonoTypeOperatorFunction, pipe } from 'rxjs'
 import { map, tap, delay, mergeMap } from 'rxjs/operators'
 import * as encode from './encoding'
@@ -10,14 +9,15 @@ import * as https from 'https'
 import * as URLSearchParams from 'url-search-params'
 import * as cheerio from 'cheerio'
 import { merge } from 'lodash'
+import { ChildInstance, CheerioStaticEx } from 'cheerio-httpcli'
 
 export const httpsAgent = new https.Agent({
   keepAlive: false
 })
 export const userAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:62.0) Gecko/20100101 Firefox/62.0'
-client.set('headers', { 'Accept-Language': 'ja,en-US' })
 export function RxFetch(
+  client: ChildInstance,
   url: string,
   params?: {},
   encoding: 'utf8' | 'sjis' = 'utf8',
@@ -35,18 +35,16 @@ export function RxFetch(
               : '?' + serialize(params))
         )
         .then(({ $, response }) => {
-          console.log(url)
+          console.log($.documentInfo().url)
           resolve($)
         })
         .catch(err => reject(err))
-    }) as Promise<client.CheerioStaticEx>
+    }) as Promise<CheerioStaticEx>
   ).pipe(
     retryWhenError
       ? pipe(
           delay(500),
-          retryWithDelay(2000, 1) as MonoTypeOperatorFunction<
-            client.CheerioStaticEx
-          >
+          retryWithDelay(2000, 1) as MonoTypeOperatorFunction<CheerioStaticEx>
         )
       : pipe()
   )
@@ -84,15 +82,19 @@ export const submitLoginForm = (
     map(({ data }) => cheerio.load(data)),
     map($ => $(formSelector)),
     mergeMap($ =>
-      axios.post($.attr('action'), new URLSearchParams(formObj($)).toString(), {
-        jar,
-        withCredentials: true,
-        httpsAgent,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'user-agent': userAgent
+      axios.post(
+        $.attr('action'),
+        new URLSearchParams(formObj($ as any)).toString(),
+        {
+          jar,
+          withCredentials: true,
+          httpsAgent,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'user-agent': userAgent
+          }
         }
-      })
+      )
     ),
     tap(() => console.log(loginUrl)),
     map(() =>
@@ -104,7 +106,10 @@ export const submitLoginForm = (
   )
 }
 
-export const fetchAndSaveCookies = (config: AxiosRequestConfig) => {
+export const fetchAndSaveCookies = (
+  client: ChildInstance,
+  config: AxiosRequestConfig
+) => {
   const jar = new tough.CookieJar()
   return from(
     axios(

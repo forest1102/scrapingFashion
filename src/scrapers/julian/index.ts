@@ -1,21 +1,21 @@
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
 import { map, filter, tap, mapTo, concatMap } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 import { findByWords, filterByWords, updateCookie } from '../../util'
 
 import * as _ from 'lodash'
 import { getAuthCredential, RxFetch } from '../../fetch'
 import { Scraper } from '../../scraperType'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
-client.set('headers', {
-  Cookie: 'TassoCambio=IsoTassoCambio=EUR;'
-})
-console.log(client.headers)
 export default class extends Scraper {
   NEXT_SELECTOR = 'a.next'
 
   beforeFetchPages = (url: string) => {
+    this.client.set('headers', {
+      Cookie: 'TassoCambio=IsoTassoCambio=EUR;'
+    })
+    console.log(this.client.headers)
     return getAuthCredential(
       'https://www.julian-fashion.com/en-JP/User/Login',
       {
@@ -25,22 +25,27 @@ export default class extends Scraper {
       { headers: { Referer: url } }
     ).pipe(
       tap(cookie => {
-        client.set('headers', {
+        this.client.set('headers', {
           Cookie: updateCookie(cookie, 'TassoCambio', 'IsoTassoCambio=EUR')
         })
       }),
-      tap(() => console.log(client.headers)),
       mapTo(url)
     )
   }
 
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) =>
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) =>
     from($('.product.in-stock').toArray()).pipe(
       map(el =>
         of({
-          url: $(el).children('a').first().attr('href'),
+          url: $(el)
+            .children('a')
+            .first()
+            .attr('href'),
           others: {
-            season: $('.tag', el).first().text().trim(),
+            season: $('.tag', el)
+              .first()
+              .text()
+              .trim(),
             gender: /\/women/.test(url) ? 'WOMEN' : 'MEN'
           }
         })
@@ -48,7 +53,7 @@ export default class extends Scraper {
     )
 
   extractData = (
-    $: client.CheerioStaticEx,
+    $: CheerioStaticEx,
     { season, gender }: { [key: string]: string }
   ) =>
     of(
@@ -58,7 +63,11 @@ export default class extends Scraper {
           e =>
             e
               .toArray()
-              .map(el => $(el).text().toUpperCase())
+              .map(el =>
+                $(el)
+                  .text()
+                  .toUpperCase()
+              )
               .join('-')
         ],
         brand: [
@@ -212,11 +221,16 @@ export default class extends Scraper {
       })),
       concatMap(obj => {
         if (!this.isItaly) return of(obj)
-        return RxFetch($.documentInfo().url.replace('en-JP', 'en-IT')).pipe(
+        return RxFetch(
+          this.client,
+          $.documentInfo().url.replace('en-JP', 'en-IT')
+        ).pipe(
           map($$ => ({
             ...obj,
             euro_price: (
-              $$('span[itemprop="price"] .old').first().text() ||
+              $$('span[itemprop="price"] .old')
+                .first()
+                .text() ||
               $$('span[itemprop="price"]')
                 .first()
                 .attr('data-mktg-product-price') ||

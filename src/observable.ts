@@ -1,4 +1,4 @@
-import { CheerioStaticEx } from 'cheerio-httpcli'
+import { CheerioStaticEx, ChildInstance } from 'cheerio-httpcli'
 import { RxFetch } from './fetch'
 import { map, flatMap, repeat, tap, expand } from 'rxjs/operators'
 import { from, concat, Observable, Observer, empty } from 'rxjs'
@@ -6,13 +6,6 @@ import * as isUrl from 'is-url'
 import * as urlPath from 'url'
 
 const absUrlReg = /https\:\/\/.*?(?=\/)/
-export const getElementByUrl = (url: string, params: {}, selector: string) =>
-  RxFetch(url, params).pipe(map($ => $(selector)))
-
-export const gotoDetail = (url: string, params: {}, detailSelector: string) =>
-  getElementByUrl(url, params, detailSelector).pipe(
-    flatMap($ => RxFetch($.attr('href')))
-  )
 type SelectorsObj = { [key: string]: [string, (e: Cheerio) => any] }
 
 export const getElementObjFromParent = <T extends SelectorsObj>(
@@ -46,29 +39,35 @@ export const getElementObj = <T extends SelectorsObj>(
 export const getrootUrl = (url: string) => url.match(absUrlReg)
 
 export const getAllPages = async (
+  client: ChildInstance,
   url: string,
   nextSelector: string
 ): Promise<CheerioStaticEx[]> => {
-  let $: CheerioStaticEx = await RxFetch(url).toPromise(),
-    nextUrl = $(nextSelector).first().attr('href')
+  let $: CheerioStaticEx = await RxFetch(client, url).toPromise(),
+    nextUrl = $(nextSelector)
+      .first()
+      .attr('href')
   const $arr = [$]
 
   while (nextUrl) {
     nextUrl = urlPath.resolve(url, nextUrl)
-    $ = await RxFetch(nextUrl).toPromise()
+    $ = await RxFetch(client, nextUrl).toPromise()
     $arr.push($)
 
-    nextUrl = $(nextSelector).first().attr('href')
+    nextUrl = $(nextSelector)
+      .first()
+      .attr('href')
   }
 
   return $arr
 }
 export const getAllPagesRx = (
+  client: ChildInstance,
   url: string,
   nextSelector: string,
   f?: (selector: Cheerio) => string
 ): Observable<CheerioStaticEx> =>
-  RxFetch(url).pipe(
+  RxFetch(client, url).pipe(
     expand($ => {
       const $next = $(nextSelector).first()
       const relativeUrl = f ? f($next) : $next.attr('href')
@@ -77,6 +76,6 @@ export const getAllPagesRx = (
       }
       const nextUrl = urlPath.resolve(url, relativeUrl)
 
-      return relativeUrl ? RxFetch(nextUrl) : empty()
+      return relativeUrl ? RxFetch(client, nextUrl) : empty()
     })
   )

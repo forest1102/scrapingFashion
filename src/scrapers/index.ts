@@ -61,11 +61,16 @@ export const execScrape = async (
     const writeTo = new CloudStorage('scraping-archives', DATA_PREFIX)
     const list = new List(readFrom)
     await list.loadFiles()
+    const child = client.fork()
     const scraper: Scraper = new ScraperModule(
-      isItaly,
       list,
+      child,
+      isItaly,
       argv && argv.slice(3)
     )
+
+    child.set('browser', 'firefox')
+    child.set('headers', { 'Accept-Language': 'ja,en-US' })
 
     const workbook = await Workbook.fromBlank({
       processed_data: '変換後',
@@ -91,7 +96,7 @@ export const execScrape = async (
       const I2Cell = workbookMacro.getCell('Sheet1', 'I2')
       I2Cell.value(
         path.win32.join(
-          list.constants.フォルダ ?? I2Cell.value(),
+          list.constants.フォルダ ?? (I2Cell.value() as string),
           saveTo,
           'img'
         )
@@ -110,7 +115,7 @@ export const execScrape = async (
     const getNextMark = makeRingItr(list.marks)
     const getNextRegId = makeRegId(list.constants['管理番号'])
     const converter = await list.getConverter()
-    const priceMasterConverter = await list.priceMasterConverterAsync()
+    child.set('timeout', 10000)
     await from(await list.getUrlsAsync())
       .pipe(
         concatMap(url =>
@@ -123,11 +128,11 @@ export const execScrape = async (
               obs.pipe(
                 concatMap(data =>
                   typeof data === 'string'
-                    ? RxFetch(urlPath.resolve(url, data)).pipe(
+                    ? RxFetch(child, urlPath.resolve(url, data)).pipe(
                         map($$ => ({ $: $$, others: { isItaly } }))
                       )
                     : typeof data === 'object' && 'url' in data
-                    ? RxFetch(urlPath.resolve(url, data.url)).pipe(
+                    ? RxFetch(child, urlPath.resolve(url, data.url)).pipe(
                         map($$ => ({
                           $: $$,
                           others: Object.assign(data.others || {}, {
@@ -136,34 +141,31 @@ export const execScrape = async (
                         }))
                       )
                     : EMPTY
-                ),
-                concatMap(({ $, others }, i) =>
-                  scraper.extractData($, { ...others, i }).pipe(
-                    map(data => ({
-                      ...data,
-                      update: moment().format('YYYY/M/D HH:mm:ss'),
-                      URL: $.documentInfo().url,
-                      brand_sex:
-                        `${data.brand}` + (data.gender === 'MEN' ? ' M' : '')
-                    })),
-                    concatMap(({ image, ...others }) =>
-                      from(image).pipe(
-                        filter(img => !!img),
-                        concatMap(img =>
-                          writeTo.uploadImg(
-                            'img',
-                            urlPath.resolve(others.URL, img)
-                          )
-                        ),
-                        reduce(
-                          (acc, val: string, i) => ({
-                            [`img${i + 1}`]: image[i],
-                            [`imgfile${i + 1}`]: val,
-                            ...acc
-                          }),
-                          others
-                        )
-                      )
+                )
+              )
+            ),
+            concatMap(({ $, others }, i) =>
+              scraper.extractData($, { ...others, i }).pipe(
+                map(data => ({
+                  ...data,
+                  update: moment().format('YYYY/M/D HH:mm:ss'),
+                  URL: $.documentInfo().url,
+                  brand_sex:
+                    `${data.brand}` + (data.gender === 'MEN' ? ' M' : '')
+                })),
+                concatMap(({ image, ...others }) =>
+                  from(image).pipe(
+                    filter(img => !!img),
+                    concatMap(img =>
+                      writeTo.uploadImg('img', urlPath.resolve(others.URL, img))
+                    ),
+                    reduce(
+                      (acc, val: string, i) => ({
+                        [`img${i + 1}`]: image[i],
+                        [`imgfile${i + 1}`]: val,
+                        ...acc
+                      }),
+                      others
                     )
                   )
                 )
@@ -172,6 +174,7 @@ export const execScrape = async (
           )
         ),
         concatMap(async obj => {
+          const priceMasterConverter = await list.priceMasterConverterAsync()
           return {
             ...obj,
             ...(priceMasterConverter[obj.brand_sex] || priceMasterConverter[''])

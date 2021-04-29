@@ -1,0 +1,15 @@
+GET https://www.gebnegozionline.com/en_it/men/designers/prada.html
+Connection: close
+Accept-Language: ja, en-US
+Accept-Encoding: gzip
+
+###
+GET https://www.gebnegozionline.com/en_it/men/designers/prada/black-leather-playing-card-kit--2sc9080dc-f0002.html
+
+###
+
+GET https://www.gebnegozionline.com/en_it/men/designers/prada.html?p=2
+Cookie: PHPSESSID=e2hqaq9024eq7m3r6k10tlvlo1; GCLB=CLbroMXKude5_wE
+Connection: close
+User-Agent: Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)
+Accept-Language: ja, en-US

@@ -1,11 +1,12 @@
 import { Observable, of } from 'rxjs'
-import { CheerioStaticEx } from 'cheerio-httpcli'
+import { CheerioStaticEx, ChildInstance } from 'cheerio-httpcli'
 import List from './lists'
 import { getAllPagesRx } from '../src/observable'
 export abstract class Scraper {
   constructor(
-    protected isItaly: boolean,
     protected lists: List,
+    protected client: ChildInstance,
+    protected isItaly: boolean,
     protected argv: string[]
   ) {}
   beforeFetchPages = (url: string) => of(url) as Observable<any>
@@ -47,5 +48,6 @@ export abstract class Scraper {
     show_discount?: boolean
   }>
 
-  getAllPages = (url: string) => getAllPagesRx(url, this.NEXT_SELECTOR)
+  getAllPages = (url: string) =>
+    getAllPagesRx(this.client, url, this.NEXT_SELECTOR)
 }

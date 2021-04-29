@@ -1,28 +1,27 @@
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
 import { map, filter } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import { Scraper } from '../../scraperType'
-
-client.set('headers', {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
-  'Cookie': 'TassoCambio=' + 'IsoTassoCambio=EUR' + '; geoLoc=id=105&nome=Japan'
-})
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
 export default class Monti extends Scraper {
   NEXT_SELECTOR = 'a.next'
-  beforeFetchPages = (url: string) => of(url)
+  beforeFetchPages = (url: string) => {
+    this.client.set('headers', {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
+      'Cookie':
+        'TassoCambio=' + 'IsoTassoCambio=EUR' + '; geoLoc=id=105&nome=Japan'
+    })
+    return of(url)
+  }
   toItemPageUrlObservable = ($: CheerioStatic, url: string) =>
     from($('.products .product').toArray()).pipe(
       filter(el => !/sold out/i.test($(el).text())),
       map(el => of({ url: $('a.link', el).attr('href'), others: {} }))
     )
-  extractData = (
-    $: client.CheerioStaticEx,
-    others: { [key: string]: string }
-  ) =>
+  extractData = ($: CheerioStaticEx, others: { [key: string]: string }) =>
     of(
       getElementObj($, {
         category: [
@@ -31,7 +30,11 @@ export default class Monti extends Scraper {
             e
               .toArray()
               .slice(1)
-              .map(el => $(el).text().trim())
+              .map(el =>
+                $(el)
+                  .text()
+                  .trim()
+              )
               .join(' ')
         ],
         brand: [
@@ -57,7 +60,12 @@ export default class Monti extends Scraper {
         ],
         productName: [
           'h2[itemprop="name"]',
-          e => e.first().text().trim().replace(/`|'/g, '')
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .replace(/`|'/g, '')
         ],
         price: [
           '.price span[itemprop="price"]',
@@ -71,9 +79,12 @@ export default class Monti extends Scraper {
         old_price: [
           '.price .old',
           e =>
-            ((e.first().text().trim() || '').match(/[0-9,.]+/) || [
-              ''
-            ])[0].replace(/,00$|\./g, '')
+            ((
+              e
+                .first()
+                .text()
+                .trim() || ''
+            ).match(/[0-9,.]+/) || [''])[0].replace(/,00$|\./g, '')
         ],
         sizes: [
           '#idTaglia option',
@@ -171,7 +182,7 @@ export default class Monti extends Scraper {
 //   .pipe(
 //     flatMap(arr => arr as string[]),
 //     concatMap(url =>
-//       getAllPagesRx(url, 'a.next').pipe(
+//       getAllPagesRx(this.client,url, 'a.next').pipe(
 //         toArray(),
 //         flatMap(v => v),
 //         concatMap($ =>

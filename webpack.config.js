@@ -25,7 +25,8 @@ module.exports = {
         loader: 'ts-loader',
         include: path.resolve(__dirname, 'src'),
         exclude: /node_modules/
-      }
+      },
+      { test: /\.https?$/, loader: 'ignore-loader' }
     ],
     unknownContextRequest: '.'
   },

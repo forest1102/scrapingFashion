@@ -10,18 +10,21 @@ import {
   flatMap,
   filter
 } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import { Scraper } from '../../scraperType'
 import * as urlPath from 'url'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
 export default class Wise extends Scraper {
   getAllPages = (url: string) =>
-    getAllPagesRx(url, '.pagine:nth-last-child(2) div.nolink', selector =>
-      selector.attr('idref')
+    getAllPagesRx(
+      this.client,
+      url,
+      '.pagine:nth-last-child(2) div.nolink',
+      selector => selector.attr('idref')
     )
   beforeFetchPages = (url: string) => {
-    client.set('headers', {
+    this.client.set('headers', {
       Cookie: `impostazioni=idnazione=28&nazione=Japan&lingua=en&settore=${(url.match(
         /woman|man/
       ) || [''])[0].toUpperCase()}&&n=${
@@ -36,16 +39,15 @@ export default class Wise extends Scraper {
       filter(el => !($(el).find('.sold-out').length > 0)),
       map(el =>
         of({
-          url: $('a', el).first().attr('href'),
+          url: $('a', el)
+            .first()
+            .attr('href'),
           others: {}
         })
       )
     )
 
-  extractData = (
-    $: client.CheerioStaticEx,
-    others: { [key: string]: string }
-  ) =>
+  extractData = ($: CheerioStaticEx, others: { [key: string]: string }) =>
     /sold out/i.test($('.clear.prezzo.textcenter').text())
       ? EMPTY
       : of(
@@ -56,7 +58,11 @@ export default class Wise extends Scraper {
                 e
                   .toArray()
                   .slice(1)
-                  .map(el => $(el).text().trim())
+                  .map(el =>
+                    $(el)
+                      .text()
+                      .trim()
+                  )
                   .join(' ')
             ],
             brand: [
@@ -106,7 +112,11 @@ export default class Wise extends Scraper {
             ],
             sku: [
               'ol.breadcrumb li:nth-last-child(1)',
-              e => e.first().text().trim()
+              e =>
+                e
+                  .first()
+                  .text()
+                  .trim()
             ],
             price: [
               '[itemprop="price"]',
@@ -132,13 +142,21 @@ export default class Wise extends Scraper {
               e =>
                 e
                   .toArray()
-                  .map(el => $(el).text().replace(/[½+]/g, '.5'))
+                  .map(el =>
+                    $(el)
+                      .text()
+                      .replace(/[½+]/g, '.5')
+                  )
                   .filter(size => size !== 'TU')
             ],
             color: [
               '.col9.last',
               e => {
-                const colorName = e.last().text().trim().toLowerCase()
+                const colorName = e
+                  .last()
+                  .text()
+                  .trim()
+                  .toLowerCase()
                 return this.lists.colors.findIndex(c =>
                   c.includes(colorName)
                 ) !== -1
@@ -207,7 +225,7 @@ export default class Wise extends Scraper {
 //   .pipe(
 //     flatMap(arr => arr as string[]),
 //     concatMap(url =>
-//       getAllPagesRx(url, '.pagine:nth-last-child(2) div.nolink', selector =>
+//       getAllPagesRx(this.client,url, '.pagine:nth-last-child(2) div.nolink', selector =>
 //         selector.attr('idref')
 //       ).pipe(
 //         // toArray(),

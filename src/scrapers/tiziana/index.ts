@@ -12,8 +12,6 @@ import {
 } from 'rxjs/operators'
 import * as _ from 'lodash'
 
-import * as client from 'cheerio-httpcli'
-
 import {
   findByWords,
   filterByWords,
@@ -22,13 +20,19 @@ import {
 } from '../../util'
 import { Scraper } from '../../scraperType'
 import List from '../../lists'
+import { ChildInstance, CheerioStaticEx } from 'cheerio-httpcli'
 export default class Tiziana extends Scraper {
   BASE_URL = 'https://www.tizianafausti.com/en/'
   NEXT_SELECTOR = '.pages-item-next a'
   sessID: string
 
-  constructor(isItaly: boolean, lists: List, argv: any[]) {
-    super(isItaly, lists, argv)
+  constructor(
+    lists: List,
+    client: ChildInstance,
+    isItaly: boolean,
+    argv: any[]
+  ) {
+    super(lists, client, isItaly, argv)
     this.sessID = _.last(argv)
     this.sessID = this.sessID === 'italy' ? '' : this.sessID
   }
@@ -36,6 +40,7 @@ export default class Tiziana extends Scraper {
   beforeFetchPages = (url: string) => {
     const verifyLogin = () =>
       RxFetch(
+        this.client,
         'https://www.tizianafausti.com/r1_en/customer/account/index/'
       ).pipe(
         map($ =>
@@ -47,7 +52,7 @@ export default class Tiziana extends Scraper {
       )
 
     if (process.argv && process.argv.length === 4) {
-      client.set('headers', {
+      this.client.set('headers', {
         Cookie: 'PHPSESSID=' + this.sessID
       })
 
@@ -57,7 +62,7 @@ export default class Tiziana extends Scraper {
     }
   }
 
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) =>
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) =>
     from($('li.product-item').toArray()).pipe(
       filter(el => !$('.stock.unavailable', el).length),
       map(el =>
@@ -70,7 +75,7 @@ export default class Tiziana extends Scraper {
       )
     )
 
-  extractData($: client.CheerioStaticEx, { gender }: { gender: string }) {
+  extractData($: CheerioStaticEx, { gender }: { gender: string }) {
     let unit = ''
     const isVip = /\/vip3_en\//.test($.documentInfo().url)
     return of(
@@ -308,12 +313,13 @@ export default class Tiziana extends Scraper {
         )
         if (!id) return of(obj)
         return RxFetch(
+          this.client,
           $.documentInfo().url.replace(/\/(jp_en|vip3_en)\//, '/it_it/'),
           {},
           'utf8',
           false
         ).pipe(
-          catchError(err => of(err.$ as client.CheerioStaticEx)),
+          catchError(err => of(err.$ as CheerioStaticEx)),
           map($$ => ({
             ...obj,
             euro_price:

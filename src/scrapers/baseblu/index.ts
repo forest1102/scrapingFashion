@@ -2,14 +2,14 @@ import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
 import { map } from 'rxjs/operators'
 
-import * as client from 'cheerio-httpcli'
 import * as _ from 'lodash'
 import { Scraper } from '../../scraperType'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
 export default class extends Scraper {
   NEXT_SELECTOR = 'a[rel="next"]:not(.disabled)'
   beforeFetchPages = url => of(url)
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) =>
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) =>
     from($('.thumbnail-container').toArray()).pipe(
       // filter(el => !($(el).find('.sold-out').length > 0)),
       map(el =>
@@ -19,10 +19,7 @@ export default class extends Scraper {
         })
       )
     )
-  extractData = (
-    $: client.CheerioStaticEx,
-    { gender }: { [key: string]: any }
-  ) =>
+  extractData = ($: CheerioStaticEx, { gender }: { [key: string]: any }) =>
     of(
       getElementObj($, {
         category: [

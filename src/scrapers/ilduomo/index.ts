@@ -2,11 +2,10 @@ import { getElementObj } from '../../observable'
 import { from, of } from 'rxjs'
 import { map, tap } from 'rxjs/operators'
 
-import * as client from 'cheerio-httpcli'
-
 import { Scraper } from '../../scraperType'
 import List from '../../lists'
 import { fetchAndSaveCookies } from '../../fetch'
+import { ChildInstance, CheerioStaticEx } from 'cheerio-httpcli'
 import {
   findByWords,
   filterByWords,
@@ -20,12 +19,17 @@ import {
 
 export default class extends Scraper {
   NEXT_SELECTOR = '.next'
-  constructor(isItaly: boolean, lists: List, argv: any[]) {
-    super(isItaly, lists, argv)
-    client.set('headers', { Cookie: this.Cookie.jp })
+  constructor(
+    lists: List,
+    client: ChildInstance,
+    isItaly: boolean,
+    argv: any[]
+  ) {
+    super(lists, client, isItaly, argv)
+    this.client.set('headers', { Cookie: this.Cookie.jp })
   }
   beforeFetchPages = (url: string) =>
-    fetchAndSaveCookies({
+    fetchAndSaveCookies(this.client, {
       url: 'https://www.ilduomo.it/login',
       method: 'POST',
       headers: {
@@ -35,7 +39,7 @@ export default class extends Scraper {
         'email=hedirockmode%40gmail.com&password=rock1226&back=&submitLogin=1'
     }).pipe(
       tap(() => {
-        console.log(client.headers)
+        console.log(this.client.headers)
       })
     )
 
@@ -56,10 +60,7 @@ export default class extends Scraper {
     jp: 'delivery_country=JP; '
   }
 
-  extractData = (
-    $: client.CheerioStaticEx,
-    others: { [key: string]: string }
-  ) => {
+  extractData = ($: CheerioStaticEx, others: { [key: string]: string }) => {
     let unit = ''
     return of(
       getElementObj($, {

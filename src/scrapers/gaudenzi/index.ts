@@ -10,37 +10,45 @@ import {
   flatMap,
   filter
 } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import { addBaseURL, filterByWords } from '../../util'
 import * as _ from 'lodash'
 
 import { Scraper } from '../../scraperType'
+import { CheerioStaticEx } from 'cheerio-httpcli'
 
-client.set('headers', {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
-  'Cookie': 'TassoCambio=' + 'IsoTassoCambio=EUR'
-})
 export default class extends Scraper {
   NEXT_SELECTOR = '.pager a.next'
 
   beforeFetchPages = (url: string) => of(url)
 
   getAllCatalogPages = (url: string) => {
-    return getAllPagesRx(url, this.NEXT_SELECTOR)
+    this.client.set('headers', {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36',
+      'Cookie': 'TassoCambio=' + 'IsoTassoCambio=EUR'
+    })
+    return getAllPagesRx(this.client, url, this.NEXT_SELECTOR)
   }
 
-  toItemPageUrlObservable = ($: client.CheerioStaticEx, url: string) =>
+  toItemPageUrlObservable = ($: CheerioStaticEx, url: string) =>
     from($('.product').toArray()).pipe(
       // filter(el => !($(el).find('.sold-out').length > 0)),
       map(el => of($('a.link', el).attr('href')))
     )
 
-  extractData = ($: client.CheerioStaticEx, {}: { gender: string }) =>
+  extractData = ($: CheerioStaticEx, {}: { gender: string }) =>
     of(
       getElementObj($, {
-        gender: ['title', e => e.first().text().trim().split(' ')[0]],
+        gender: [
+          'title',
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .split(' ')[0]
+        ],
         brand: [
           '#details > h1 > a',
           e =>
@@ -64,7 +72,12 @@ export default class extends Scraper {
         ],
         productName: [
           '#details h2',
-          e => e.first().text().trim().replace(/`|'/g, '')
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .replace(/`|'/g, '')
         ],
         // script: [
         //   '.data-sheet li:nth-child(1)',

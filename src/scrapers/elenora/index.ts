@@ -5,7 +5,6 @@ import * as qs from 'qs'
 import { getElementObj, getAllPagesRx } from '../../observable'
 import { from, of } from 'rxjs'
 import { map, tap, flatMap, filter } from 'rxjs/operators'
-import * as client from 'cheerio-httpcli'
 
 import { Scraper } from '../../scraperType'
 import { CheerioStaticEx } from 'cheerio-httpcli'
@@ -67,7 +66,7 @@ export default class Elenora extends Scraper {
           .join(';')
       ),
       tap(cookie => {
-        client.set('headers', {
+        this.client.set('headers', {
           Cookie: cookie
         })
       })
@@ -92,7 +91,11 @@ export default class Elenora extends Scraper {
             e
               .toArray()
               .slice(2)
-              .map(el => $(el).text().trim())
+              .map(el =>
+                $(el)
+                  .text()
+                  .trim()
+              )
               .join(' ')
         ],
         brand: [
@@ -118,7 +121,12 @@ export default class Elenora extends Scraper {
         ],
         productName: [
           '#body_content_lblNOME',
-          e => e.first().text().trim().replace(/`|'/g, '')
+          e =>
+            e
+              .first()
+              .text()
+              .trim()
+              .replace(/`|'/g, '')
         ],
         price: [
           '#body_content_meta_price',
@@ -289,7 +297,7 @@ export default class Elenora extends Scraper {
 //       from(fs.readJSON(path.join(__dirname, '../data/urls.json'))).pipe(
 //         flatMap(arr => arr as string[]),
 //         concatMap(url =>
-//           getAllPagesRx(url, '#body_content_hl_LastPage').pipe(
+//           getAllPagesRx(this.client,url, '#body_content_hl_LastPage').pipe(
 //             toArray(),
 //             flatMap(v => v),
 //             concatMap($ =>
